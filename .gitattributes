@@ -6,10 +6,11 @@ artifacts/SHA256SUMS text diff
 *.d01 binary
 
 # Preserve imported source and device-generated CRLF text byte-for-byte.
-docs/captures/** -whitespace
-experiments/** -whitespace
-kernel/overlay/** -whitespace
-loader/html/** -whitespace
-rootfs/overlay/** -whitespace
-tools/libexword/** -whitespace
-x11/buildroot-overlay/** -whitespace
+docs/captures/** -text -whitespace
+experiments/** -text -whitespace
+kernel/overlay/** -text -whitespace
+loader/html/** -text -whitespace
+rootfs/overlay/** -text -whitespace
+tools/libexword/** -text -whitespace
+x11/buildroot-overlay/** -text -whitespace
+x11/buildroot-tree-patches/** -text -whitespace

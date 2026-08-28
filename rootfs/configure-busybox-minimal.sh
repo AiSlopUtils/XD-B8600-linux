@@ -1,10 +1,24 @@
 #!/bin/sh
 set -eu
 
-cd /work/busybox-1.37.0
+repo=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+busybox_tree=${1:-$repo/build/busybox-1.37.0}
+kernel_tree=${KERNEL_TREE:-$repo/build/linux-6.1}
+cross_compile=${CROSS_COMPILE:-sh4-linux-gnu-}
+
+[ -f "$busybox_tree/Makefile" ] || {
+	echo "configure-busybox-minimal: not a BusyBox tree: $busybox_tree" >&2
+	exit 1
+}
+[ -x "$kernel_tree/scripts/config" ] || {
+	echo "configure-busybox-minimal: Linux scripts/config not found in $kernel_tree" >&2
+	exit 1
+}
+
+cd "$busybox_tree"
 make allnoconfig >/tmp/exword-busybox-allnoconfig.log
 
-cfg=/work/linux/scripts/config
+cfg=$kernel_tree/scripts/config
 
 enable_options() {
 	for option in "$@"; do
@@ -12,7 +26,7 @@ enable_options() {
 	done
 }
 
-"$cfg" --file .config --set-str CROSS_COMPILER_PREFIX "sh4-linux-gnu-"
+"$cfg" --file .config --set-str CROSS_COMPILER_PREFIX "$cross_compile"
 "$cfg" --file .config --set-str EXTRA_CFLAGS "-mb -m4a-nofpu"
 "$cfg" --file .config --set-str INIT_TERMINAL_TYPE "linux"
 "$cfg" --file .config --set-str UNAME_OSNAME "GNU/Linux"

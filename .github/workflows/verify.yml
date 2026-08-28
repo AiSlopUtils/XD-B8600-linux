@@ -1,0 +1,19 @@
+name: Verify repository
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source and artifacts
+        uses: actions/checkout@v4
+      - name: Verify source syntax, hashes, and deterministic payload repack
+        run: make verify

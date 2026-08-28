@@ -5,5 +5,5 @@ RUN apt-get update -qq \
     && apt-get install -y -qq --no-install-recommends \
        bc bison build-essential cpio flex gcc-sh4-linux-gnu \
        binutils-sh4-linux-gnu libc6-dev-sh4-cross libelf-dev libssl-dev \
-       python3 xz-utils \
+       python3 rsync xz-utils \
     && rm -rf /var/lib/apt/lists/*

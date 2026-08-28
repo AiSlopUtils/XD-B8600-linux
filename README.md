@@ -32,6 +32,28 @@ The latest candidate was uploaded and read back byte-for-byte over USB. Its
 post-SDHI-fix boot had not yet been confirmed when this repository was
 archived. The secondary keyboard display is unsupported and disabled.
 
+## Clean-clone quick start
+
+The repository now includes top-level build targets, dependency checks, pinned
+download scripts, Docker recipes, and install/readback instructions:
+
+```sh
+git clone https://github.com/AiSlopUtils/XD-B8600-linux.git
+cd XD-B8600-linux
+make verify       # offline artifact and source checks
+make doctor       # Docker/full-build prerequisite check
+make ready        # native USB client + known-good loader package
+make payload      # rebuild Linux using supplied BusyBox and X image
+JOBS=4 make all   # complete pinned payload and loader build
+```
+
+`make all` produces `build/LINUX-from-source.PAY` and installable LNX03
+packages under `build/exword-data`. It downloads checksum/revision-pinned
+upstream inputs and needs Docker, internet access, and about 10 GiB of free
+space. The host USB client has small native Homebrew or Debian dependencies.
+See [docs/BUILDING.md](docs/BUILDING.md) for setup and
+[docs/INSTALLING.md](docs/INSTALLING.md) for safe device installation.
+
 ## Why SD support is disabled
 
 Linux currently reconstructs the inherited SH7724 clock tree as 0 Hz. Earlier
@@ -50,19 +72,32 @@ The loader searches for `linux.pay`/`LINUX.PAY` in `CASIOTXT` and at the root
 of internal storage, then on the SD card. The recommended route is internal
 storage with the SD card removed.
 
-Using the included patched `tools/libexword` command-line client:
+Build the included patched `tools/libexword` command-line client with
+`make usb-tool`, create a separate readback directory, and start the client:
 
-```text
-connect text
-send linux.pay
-get linux.pay
-disconnect
+```sh
+mkdir -p build/readback
+./scripts/run-libexword.sh
 ```
 
-Compare the downloaded file with [artifacts/LINUX.PAY](artifacts/LINUX.PAY),
-exit USB mode, launch the LNX03 add-in, and press Enter at the armed screen.
+Then use:
+
+```text
+connect text ja
+send artifacts/LINUX.PAY
+get build/readback/LINUX.PAY
+disconnect
+exit
+```
+
+Compare `build/readback/LINUX.PAY` with
+[artifacts/LINUX.PAY](artifacts/LINUX.PAY), exit USB mode, and launch the
+LNX03 add-in. Release the keys, press Enter to inspect the payload, press
+Enter once more to arm it, then press Enter at the ARMED screen to boot.
 The exact artifact hashes are in
 [artifacts/SHA256SUMS](artifacts/SHA256SUMS).
+Use a separate readback directory so `get` cannot overwrite the source
+artifact; the exact commands are in [docs/INSTALLING.md](docs/INSTALLING.md).
 
 The loader never writes NOR flash. Linux uses a RAM initramfs; the X image is
 staged in reserved RAM and mounted read-only as SquashFS.
@@ -95,6 +130,8 @@ from the twm root menu or turn pointer mode off and press Back+Q.
 - `tools/libexword/` — pinned upstream transfer client with the local fixes.
 - `experiments/` — early hello-world, hardware-info, and init work.
 - `artifacts/` — final readback-verified payload and useful milestones.
+- `scripts/` and the top-level `Makefile` — clean-clone preparation, build,
+  validation, loader staging, and host-transfer entry points.
 
 The original 4.5 GiB work directory contained downloaded upstream trees and
 generated output. Those caches are intentionally not committed. Exact

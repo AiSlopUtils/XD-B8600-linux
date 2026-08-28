@@ -507,7 +507,7 @@ void content(struct state *s)
 	if (peek_arg(&(s->cmd_list)) == NULL) {
 		printf("No sub-function specified.\n");
 	} else {
-		subfunc = xmalloc(strlen(peek_arg(&(s->cmd_list)) + 1));
+		subfunc = xmalloc(strlen(peek_arg(&(s->cmd_list))) + 1);
 		strcpy(subfunc, peek_arg(&(s->cmd_list)));
 		dequeue_arg(&(s->cmd_list));
 		if (strcmp(subfunc, "list") == 0) {
@@ -541,7 +541,7 @@ void content(struct state *s)
 					printf("No username specified.\n");
 				}
 			} else {
-				user = xmalloc(strlen(peek_arg(&(s->cmd_list)) + 1));
+				user = xmalloc(strlen(peek_arg(&(s->cmd_list))) + 1);
 				strcpy(user, peek_arg(&(s->cmd_list)));
 				dequeue_arg(&(s->cmd_list));
 			}
@@ -737,6 +737,7 @@ int do_events()
 		if (st->disconnect_event)
 			disconnect(st);
 	}
+	return 0;
 }
 
 void interactive(struct state *s)

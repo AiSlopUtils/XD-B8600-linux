@@ -171,8 +171,13 @@ cp -a "$target/usr/share/X11/Xcms.txt" "$stage/usr/share/X11/"
 # single entry used by this appliance; startx points TERMINFO at this relocated
 # directory so no copy or symlink outside /opt/x11 is needed.
 xterm_terminfo=$target/usr/share/terminfo/x/xterm
+if [[ ! -f $xterm_terminfo ]]; then
+	# ncurses uses hexadecimal first-character directories when its host tic
+	# is built on a case-insensitive filesystem (x is ASCII 0x78).
+	xterm_terminfo=$target/usr/share/terminfo/78/xterm
+fi
 [[ -f $xterm_terminfo ]] || {
-	echo "package-x11: missing xterm terminfo entry: $xterm_terminfo" >&2
+	echo "package-x11: missing xterm terminfo entry (x/xterm or 78/xterm)" >&2
 	exit 1
 }
 mkdir -p "$stage/usr/share/terminfo/x"

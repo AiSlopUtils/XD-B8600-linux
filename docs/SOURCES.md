@@ -7,19 +7,37 @@ exact baselines used by the port.
 | --- | --- | --- |
 | Linux | 6.1 | `2ca1f17051a430f6fed1196e4952717507171acfd97d96577212502703b25deb` |
 | BusyBox | 1.37.0 | `3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4` |
-| musl | 1.2.5 | `a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4` |
+| musl (exact BusyBox rebuild) | 1.2.5 | `a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4` |
+| musl (Buildroot X11 toolchain) | 1.1.22 | `8b0941a48d2f980fd7036cfbd24aa1d414f03d9a0652ecbd5ec5c7ff1bee29e3` |
 | X.Org server | 1.19.7 | `7112f7128a4f5b06ceb8bba1bdc5e5c9e0fae682a42d35218bc12ba693f4c80c` |
 | Buildroot | 2019.02.11 | `5a6d31c87e1573bc83986471c194b944d7a365b7` |
-| libexword | `2.0-dev` | `d186e35` plus the local changes in `tools/libexword` |
+| libexword | `2.0-dev` | `d186e356d942ea83c89480dc9d2110c1dbe520ef` plus the local changes in `tools/libexword` |
+| devkitSH4 SDK archive | GCC 8.3.0, Linux x86-64 | `1609b719e62224521243fea086ea492759fd9ee4116e1450d8b5e69fccfc7555` |
+| libdataplus source reference | `master` | `fd4681fe0873700acfcb7128af18622d4f5e70a5` |
 
 Primary upstream locations:
 
 - Linux: <https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.tar.xz>
 - BusyBox: <https://busybox.net/downloads/busybox-1.37.0.tar.bz2>
-- musl: <https://musl.libc.org/releases/musl-1.2.5.tar.gz>
+- musl 1.2.5: <https://musl.libc.org/releases/musl-1.2.5.tar.gz>
+- musl 1.1.22: <https://musl.libc.org/releases/musl-1.1.22.tar.gz>
 - X.Org: <https://www.x.org/releases/individual/xserver/xorg-server-1.19.7.tar.bz2>
 - Buildroot: <https://gitlab.com/buildroot.org/buildroot>
 - libexword: <https://github.com/brijohn/libexword>
+- devkitSH4 SDK: <https://github.com/MaxSignal/buildscripts/releases/download/Linux/devkitPro.tar.gz>
+- libdataplus: <https://github.com/brijohn/libdataplus>
+
+The checksum-pinned devkitSH4 archive contains the prebuilt libdataplus used
+for the exact LNX03 rebuild. The libdataplus revision above records the
+upstream source checkout inspected during development; it is not a claim that
+the archive exposes build metadata proving its embedded libraries came from
+that exact commit.
+
+The Docker recipes currently use Ubuntu 22.04 tags. Those tags and apt
+repositories are not content-addressed inputs, so target source builds are
+validated for architecture, linkage, closure, and size rather than promised
+to be bit-for-bit identical indefinitely. LNX03 is the exception: its build
+must match the checked-in D01 exactly or the script fails.
 
 Hardware reference: Renesas SH7724 Group Hardware Manual. The manual is not
 redistributed here; obtain it from Renesas.

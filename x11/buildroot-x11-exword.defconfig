@@ -3,6 +3,7 @@
 # second BusyBox.
 BR2_sh=y
 BR2_sh4aeb=y
+BR2_PRIMARY_SITE="https://sources.buildroot.net"
 BR2_TARGET_OPTIMIZATION="-m4a-nofpu -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables"
 BR2_TARGET_LDFLAGS="-Wl,--gc-sections"
 BR2_TOOLCHAIN_BUILDROOT_MUSL=y

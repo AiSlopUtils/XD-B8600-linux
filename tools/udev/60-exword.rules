@@ -1,0 +1,2 @@
+# Casio EX-word USB link (text, library, and CD modes)
+SUBSYSTEM=="usb", ATTR{idVendor}=="07cf", ATTR{idProduct}=="6101", MODE="0660", GROUP="plugdev", TAG+="uaccess"

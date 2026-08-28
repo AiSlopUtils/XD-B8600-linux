@@ -1,0 +1,33 @@
+diff --git a/package/ncurses/ncurses.mk b/package/ncurses/ncurses.mk
+index e8c5335337..663e1bfca7 100644
+--- a/package/ncurses/ncurses.mk
++++ b/package/ncurses/ncurses.mk
+@@ -166,10 +166,26 @@ NCURSES_POST_INSTALL_TARGET_HOOKS += NCURSES_TARGET_SYMLINK_RESET
+ endif
+ 
+ define NCURSES_TARGET_CLEANUP_TERMINFO
++	# Docker Desktop bind mounts can be case-insensitive even though the
++	# build runs in Linux.  In that case host tic deliberately writes the
++	# first component as its hexadecimal byte value (x -> 78) rather than
++	# a letter directory (x).  Accept either layout, but always normalize
++	# the target tree to Buildroot's documented letter layout.
+ 	$(RM) -rf $(TARGET_DIR)/usr/share/terminfo $(TARGET_DIR)/usr/share/tabset
+ 	$(foreach t,$(NCURSES_TERMINFO_FILES), \
+-		$(INSTALL) -D -m 0644 $(STAGING_DIR)/usr/share/terminfo/$(t) \
+-			$(TARGET_DIR)/usr/share/terminfo/$(t)
++		src='$(STAGING_DIR)/usr/share/terminfo/$(t)'; \
++		if [ ! -f "$$src" ]; then \
++			hex=$$(printf '%s' \
++				'$(firstword $(subst /, ,$(t)))' | \
++				od -An -tx1 | tr -d '[:space:]'); \
++			src='$(STAGING_DIR)/usr/share/terminfo/'"$$hex"'/$(notdir $(t))'; \
++		fi; \
++		if [ ! -f "$$src" ]; then \
++			echo "ncurses: missing terminfo entry $(t)" >&2; \
++			exit 1; \
++		fi; \
++		$(INSTALL) -D -m 0644 "$$src" \
++			'$(TARGET_DIR)/usr/share/terminfo/$(t)';
+ 	)
+ endef
+ NCURSES_POST_INSTALL_TARGET_HOOKS += NCURSES_TARGET_CLEANUP_TERMINFO
