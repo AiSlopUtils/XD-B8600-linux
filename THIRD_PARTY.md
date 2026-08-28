@@ -2,6 +2,9 @@
 
 This research repository contains or builds modified third-party software.
 Individual source headers and upstream projects define the applicable terms.
+Project-original material not carrying another license notice is available
+under the repository's [Zero-Clause BSD License](LICENSE). That license does
+not replace or weaken any third-party license listed below.
 
 - Linux kernel overlay: Linux 6.1, GPL-2.0-only. The overlay plus the pinned
   upstream archive and exact config constitute the source changes for the

@@ -161,6 +161,10 @@ versions, hashes, and upstream locations are recorded in
 
 ## Licensing
 
-This repository combines original work with modified GPL and other upstream
-projects. Copyright and SPDX notices in individual files remain authoritative.
-See [THIRD_PARTY.md](THIRD_PARTY.md) before redistributing binaries.
+Project-original code is licensed under the
+[Zero-Clause BSD License](LICENSE): it may be used, copied, modified, and
+distributed for any purpose without an attribution requirement. This does not
+relicense incorporated third-party work. Linux, BusyBox, libexword, X11
+components, and other imported code retain their upstream licenses; copyright
+and SPDX notices in individual files remain authoritative. See
+[THIRD_PARTY.md](THIRD_PARTY.md) before redistributing combined binaries.
