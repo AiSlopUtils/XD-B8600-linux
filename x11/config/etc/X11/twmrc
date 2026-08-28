@@ -1,0 +1,53 @@
+NoBackingStore
+NoSaveUnders
+NoHighlight
+NoTitleHighlight
+RandomPlacement
+BorderWidth 1
+TitleButtonBorderWidth 0
+TitlePadding 1
+FramePadding 1
+ButtonIndent 1
+MoveDelta 3
+
+TitleFont "fixed"
+ResizeFont "fixed"
+MenuFont "fixed"
+IconFont "fixed"
+IconManagerFont "fixed"
+
+Color
+{
+    BorderColor "#ffffff"
+    DefaultBackground "#000000"
+    DefaultForeground "#ffffff"
+    TitleBackground "#000060"
+    TitleForeground "#ffffff"
+    MenuBackground "#000000"
+    MenuForeground "#ffffff"
+    MenuTitleBackground "#000060"
+    MenuTitleForeground "#ffffff"
+    MenuShadowColor "#202020"
+    IconBackground "#000000"
+    IconForeground "#ffffff"
+    IconBorderColor "#ffffff"
+    IconManagerBackground "#000000"
+    IconManagerForeground "#ffffff"
+}
+
+Button1 = : root : f.menu "main"
+Button2 = : root : f.menu "main"
+Button3 = : root : f.menu "main"
+
+"q" = c : all : f.quit
+"r" = c : all : f.refresh
+
+menu "main"
+{
+    " EX-word Linux " f.title
+    "Terminal"         f.exec "/opt/x11/usr/bin/xterm -tn xterm -fn fixed -geometry 64x20 -sl 64 +sb -ut &"
+    "System Info"      f.exec "/opt/x11/usr/bin/xterm -tn xterm -fn fixed -geometry 78x18 -sl 8 +sb -ut -e /bin/sh -c 'screenfetch; echo; echo Press ENTER to close; read answer' &"
+    "Refresh"          f.refresh
+    "Restart TWM"      f.restart
+    "Quit to console"  f.quit
+}

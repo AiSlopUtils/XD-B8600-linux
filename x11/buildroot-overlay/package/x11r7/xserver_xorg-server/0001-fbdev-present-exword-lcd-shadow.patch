@@ -1,0 +1,81 @@
+From 2ae5db20f3b77bc15f951823ea59c93ef11e8604 Mon Sep 17 00:00:00 2001
+From: EX-word Linux port <exword@localhost>
+Date: Thu, 27 Aug 2026 12:00:00 -0400
+Subject: [PATCH] kdrive: present EX-word shadow damage through fbdev pan
+
+The EX-word LCD controller does not scan out Linux framebuffer memory.
+Its framebuffer driver must explicitly DMA the buffer to the panel, and
+uses FBIOPAN_DISPLAY as the userspace presentation hook.  Direct KDrive
+mmap rendering therefore remains invisible.
+
+Keep one native-size KDrive shadow only for this framebuffer, copy each
+damage batch into the mapping, and request one panel presentation.  This
+costs 337920 bytes at 528x320 RGB565 and avoids a continuous refresh timer.
+---
+ hw/kdrive/fbdev/fbdev.c | 29 ++++++++++++++++++++++++++++--
+ 1 file changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/hw/kdrive/fbdev/fbdev.c b/hw/kdrive/fbdev/fbdev.c
+index d6cf7f5..b5dd0d3 100644
+--- a/hw/kdrive/fbdev/fbdev.c
++++ b/hw/kdrive/fbdev/fbdev.c
+@@ -29,6 +29,15 @@
+ 
+ const char *fbdevDevicePath = NULL;
+ 
++static Bool
++fbdevNeedsPresent(FbdevPriv *priv)
++{
++    return strncmp((const char *) priv->fix.id,
++                   "EX-word LCD", sizeof(priv->fix.id)) == 0;
++}
++
++static Bool fbdevPresentWarningShown;
++
+ static Bool
+ fbdevInitialize(KdCardInfo * card, FbdevPriv * priv)
+ {
+@@ -309,6 +318,20 @@ fbdevWindowAfb(ScreenPtr pScreen,
+     return (CARD8 *) priv->fb + row * priv->fix.line_length + offset;
+ }
+ 
++static void
++fbdevUpdatePackedPresent(ScreenPtr pScreen, shadowBufPtr pBuf)
++{
++    KdScreenPriv(pScreen);
++    FbdevPriv *priv = pScreenPriv->card->driver;
++
++    shadowUpdatePacked(pScreen, pBuf);
++    if (ioctl(priv->fd, FBIOPAN_DISPLAY, &priv->var) < 0 &&
++        !fbdevPresentWarningShown) {
++        ErrorF("EX-word framebuffer present failed: %s\n", strerror(errno));
++        fbdevPresentWarningShown = TRUE;
++    }
++}
++
+ Bool
+ fbdevMapFramebuffer(KdScreenInfo * screen)
+ {
+@@ -317,7 +342,8 @@ fbdevMapFramebuffer(KdScreenInfo * screen)
+     FbdevPriv *priv = screen->card->driver;
+ 
+     if (scrpriv->randr != RR_Rotate_0 ||
+-        priv->fix.type != FB_TYPE_PACKED_PIXELS)
++        priv->fix.type != FB_TYPE_PACKED_PIXELS ||
++        fbdevNeedsPresent(priv))
+         scrpriv->shadow = TRUE;
+     else
+         scrpriv->shadow = FALSE;
+@@ -486,6 +512,10 @@ fbdevSetShadow(ScreenPtr pScreen)
+         break;
+     }
+ 
++    if (fbdevNeedsPresent(priv) &&
++        priv->fix.type == FB_TYPE_PACKED_PIXELS &&
++        scrpriv->randr == RR_Rotate_0)
++        update = fbdevUpdatePackedPresent;
+     return KdShadowSet(pScreen, scrpriv->randr, update, window);
+ }
+ 
+-- 
+2.39.5

@@ -1,0 +1,61 @@
+[Identity and firmware]
+Tool: System Information v1
+Retail model: Casio EX-word XD-B8600
+Add-in ID: SYSIF
+Install medium: internal
+ROM header address: 0x8001FF80
+ROM signature: CASIODICS04R
+Firmware model code: C186
+Header magic: 0x55AAAA55
+Entry context: 0x8C145290
+Syscall dispatcher: 0x803262DC
+
+[CPU and execution state]
+CPU family: Renesas SH-4A
+PVR: 0x10300B00
+PRR: 0x00002C00
+CVR: 0x43440110
+SR: 0x40000101
+VBR: 0x80023F00
+GBR: 0x34C35EFF
+MMUCR: 0x50002D01
+CCR: 0x00000105
+Byte order: big-endian
+
+[Clock generator]
+FRQCR: 0x0F111113
+PLL field: 15  multiplier: x32
+ICLK divisor: /3 (code 1)
+SHCLK divisor: /3 (code 1)
+BCLK divisor: /3 (code 1)
+PCLK divisor: /6 (code 3)
+!MHz omitted: oscillator frequency is not yet verified
+
+[Memory map]
+External RAM: 16777216 bytes (16 MiB)
+External RAM range: 0x8C000000-0x8CFFFFFF
+NOR flash: 33554432 bytes (32 MiB)
+NOR mapping: 0x80000000-0x81FFFFFF
+Add-in code window: 0x70000080-0x7001FFFF
+Add-in RAM window: 0x7400004C-0x74007FFF
+Main VRAM: 0xAC200000, 337920 bytes, RGB565
+Main LCD: 528x320, MMIO 0xB4000000
+Sub LCD: 240x96 touch; controller not mapped yet
+Keyboard matrix: 0xA44B0000
+
+[Storage]
+Internal status: total=0 free=0
+Internal total: 467132416 bytes (445 MiB)
+Internal free: 344711168 bytes (328 MiB)
+Internal used: 122421248 bytes (116 MiB)
+microSD status: total=-33 free=-99
+microSD total: 1879062056 bytes (1792 MiB)
+microSD free: 0 bytes (0 MiB)
+microSD used: 1879062056 bytes (1792 MiB)
+Text report: \\drv0\SYSINFO.TXT
+
+[Interfaces and notes]
+USB protocol device: 07CF:6101 (EX-word link)
+OS: proprietary Casio firmware with syscall gateway
+All values collected using read-only register access
+Unknown fields are retained as raw hex for analysis

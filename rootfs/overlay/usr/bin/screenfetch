@@ -1,0 +1,67 @@
+#!/bin/sh
+
+# Tiny screenfetch-style system summary for the 16 MiB EX-word port.
+# It deliberately uses only BusyBox ash built-ins and applets.
+
+if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
+	blue='\033[1;34m'
+	cyan='\033[1;36m'
+	white='\033[1;37m'
+	reset='\033[0m'
+else
+	blue=
+	cyan=
+	white=
+	reset=
+fi
+
+mem_total=unknown
+mem_free=unknown
+mem_available=
+swap_total=unknown
+swap_free=unknown
+while read -r mem_key mem_value mem_unit; do
+	case "$mem_key" in
+		MemTotal:) mem_total="${mem_value} KiB" ;;
+		MemFree:) mem_free="${mem_value} KiB" ;;
+		MemAvailable:) mem_available="${mem_value} KiB" ;;
+		SwapTotal:) swap_total="${mem_value} KiB" ;;
+		SwapFree:) swap_free="${mem_value} KiB" ;;
+	esac
+done < /proc/meminfo
+[ -n "$mem_available" ] || mem_available=$mem_free
+
+cpu="Renesas SH-4A (big-endian)"
+while IFS=: read -r cpu_key cpu_value; do
+	case "$cpu_key" in
+		cpu\ type*|machine*)
+			cpu_value=${cpu_value# }
+			[ -n "$cpu_value" ] && cpu=$cpu_value
+			break
+			;;
+	esac
+done < /proc/cpuinfo
+
+resolution=528x320
+if [ -r /sys/class/graphics/fb0/virtual_size ]; then
+	resolution=$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null)
+	resolution=${resolution%,*}x${resolution#*,}
+fi
+
+kernel=$(uname -r)
+host=$(hostname)
+up=$(uptime 2>/dev/null)
+up=${up#*up }
+
+printf "${blue}       _______       ${cyan}%s@%s${reset}\n" root "$host"
+printf "${blue}   ___/  EX    \\___   ${white}OS:${reset}       EX-word Linux\n"
+printf "${blue}  /  WORD DATAPLUS  \\  ${white}Model:${reset}    Casio XD-B8600\n"
+printf "${blue} |   ____________   |  ${white}Kernel:${reset}   %s\n" "$kernel"
+printf "${blue} |  |            |  |  ${white}CPU:${reset}      %s\n" "$cpu"
+printf "${blue} |  |   LINUX    |  |  ${white}Memory:${reset}   %s total, %s available\n" "$mem_total" "$mem_available"
+printf "${blue} |  |____________|  |  ${white}Swap:${reset}     %s total, %s free\n" "$swap_total" "$swap_free"
+printf "${blue} |  [SH-4A]  [X11]  |  ${white}Display:${reset}  %s framebuffer\n" "$resolution"
+printf "${blue}  \\________________/   ${white}Shell:${reset}    BusyBox ash\n"
+printf "${blue}      |_|  |_|        ${white}WM:${reset}       twm\n"
+printf "${blue}                      ${white}Uptime:${reset}   %s\n" "$up"
+

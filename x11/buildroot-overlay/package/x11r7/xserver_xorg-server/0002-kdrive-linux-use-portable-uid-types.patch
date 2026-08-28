@@ -1,0 +1,27 @@
+From 6954423b0f5e4aa14093f935931395af23724b40 Mon Sep 17 00:00:00 2001
+From: EX-word Linux port <exword@localhost>
+Date: Thu, 27 Aug 2026 12:05:00 -0400
+Subject: [PATCH] kdrive: use portable uid_t and gid_t on Linux
+
+The double-underscore glibc implementation types are not provided by musl.
+Use the POSIX types exposed by sys/types.h instead.
+---
+ hw/kdrive/linux/linux.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/kdrive/linux/linux.c b/hw/kdrive/linux/linux.c
+index 46e4649..cb70c00 100644
+--- a/hw/kdrive/linux/linux.c
++++ b/hw/kdrive/linux/linux.c
+@@ -65,7 +65,7 @@ LinuxCheckChown(const char *file)
+ {
+     struct stat st;
+-    __uid_t u;
+-    __gid_t g;
++    uid_t u;
++    gid_t g;
+     int r;
+ 
+     if (stat(file, &st) < 0)
+-- 
+2.39.5

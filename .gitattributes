@@ -1,0 +1,15 @@
+artifacts/** binary
+artifacts/SHA256SUMS text diff
+*.PAY binary
+*.pay binary
+*.sqfs binary
+*.d01 binary
+
+# Preserve imported source and device-generated CRLF text byte-for-byte.
+docs/captures/** -whitespace
+experiments/** -whitespace
+kernel/overlay/** -whitespace
+loader/html/** -whitespace
+rootfs/overlay/** -whitespace
+tools/libexword/** -whitespace
+x11/buildroot-overlay/** -whitespace

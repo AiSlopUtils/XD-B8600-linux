@@ -1,0 +1,96 @@
+#!/bin/sh
+
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export HOME=/root
+export USER=root
+
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mkdir -p /tmp /root /mnt /opt/x11 /lib /usr/share /dev/pts
+mount -t devpts -o mode=620,ptmxmode=0666 devpts /dev/pts 2>/dev/null || \
+	echo "  Warning: devpts mount failed; X terminals will not open"
+
+# Keep temporary files from consuming the whole initramfs.  tmpfs allocates
+# pages on demand, so this limit does not reserve 1 MiB at boot.
+mount -t tmpfs -o size=1M,nr_inodes=128,mode=1777 tmpfs /tmp 2>/dev/null || \
+	echo "  Warning: bounded /tmp mount failed"
+
+# Internal flash remains read-only from Linux.  Keep the deliberately bounded
+# zram fallback available.  Removable-card probing is held off until the
+# read-only sdhwinfo snapshot validates the inherited clock and pin mux.
+swap_status="disabled"
+zram_sys=/sys/block/zram0
+if [ -b /dev/zram0 ] && [ -w "$zram_sys/disksize" ]; then
+	echo lzo-rle > "$zram_sys/comp_algorithm" 2>/dev/null || true
+	if echo 16M > "$zram_sys/disksize" 2>/dev/null &&
+	   echo 4M > "$zram_sys/mem_limit" 2>/dev/null &&
+	   mkswap /dev/zram0 >/dev/null 2>&1 &&
+	   swapon /dev/zram0 2>/dev/null; then
+		swap_status="16 MiB zram (4 MiB RAM cap)"
+	else
+		echo "  Warning: zram setup failed; continuing without swap"
+	fi
+fi
+
+# Keep the X.Org server, TWM, XKB data and shared libraries compressed.  The
+# loop-mounted image faults in only the blocks actually touched by startx.
+x11_status="not installed"
+x11_device=""
+if [ -b /dev/mtdblock0 ]; then
+	x11_device=/dev/mtdblock0
+elif [ -r /x11.sqfs ] && [ -b /dev/loop0 ] &&
+     losetup /dev/loop0 /x11.sqfs 2>/dev/null; then
+	x11_device=/dev/loop0
+fi
+if [ -n "$x11_device" ]; then
+	if mount -t squashfs -o ro "$x11_device" /opt/x11 2>/dev/null; then
+		# ELF names its musl interpreter with an absolute /lib path.  Keep
+		# the real file compressed in the mounted image and expose only the
+		# tiny symlink needed before the first dynamic X11 binary can run.
+		for x11_loader in /opt/x11/lib/ld-musl-*.so.1; do
+			[ -e "$x11_loader" ] || continue
+			ln -sf "$x11_loader" "/lib/${x11_loader##*/}"
+		done
+		# Xlib 1.6 retains this compile-time data path even when its shared
+		# objects are found through LD_LIBRARY_PATH.
+		[ -e /usr/share/X11 ] || \
+			ln -s /opt/x11/usr/share/X11 /usr/share/X11
+		x11_status="Xfbdev + twm ready (compressed SquashFS)"
+	else
+		[ "$x11_device" != /dev/loop0 ] || \
+			losetup -d /dev/loop0 2>/dev/null || true
+		x11_status="X11 image mount failed"
+	fi
+fi
+
+# Prefer reclaiming clean, reloadable X11 pages before swapping aggressively.
+# This also avoids wasting zram on the already-XZ-compressed SquashFS image.
+# Fetch one page per swap fault and keep BusyBox init alive on an OOM.
+[ -w /proc/sys/vm/swappiness ] && echo 80 > /proc/sys/vm/swappiness
+[ -w /proc/sys/vm/page-cluster ] && echo 0 > /proc/sys/vm/page-cluster
+[ -w /proc/sys/vm/compaction_proactiveness ] && \
+	echo 0 > /proc/sys/vm/compaction_proactiveness
+[ -w /proc/sys/vm/oom_kill_allocating_task ] && \
+	echo 1 > /proc/sys/vm/oom_kill_allocating_task
+[ -w /proc/sys/vm/panic_on_oom ] && echo 0 > /proc/sys/vm/panic_on_oom
+
+hostname exword
+dmesg -n 6
+clear
+echo
+echo "  EX-WORD LINUX + BUSYBOX"
+echo "  ======================="
+echo
+echo "  Kernel:  Linux 6.1"
+echo "  CPU:     Renesas SH-4A, big-endian"
+echo "  Memory:  16 MiB physical"
+echo "  Swap:    $swap_status"
+echo "  SD:      controller held unbound; run sdhwinfo"
+echo "  X11:     $x11_status"
+echo "  Root:    swap-capable tmpfs initramfs"
+echo "  /tmp:    1 MiB maximum"
+echo
+echo "  Keyboard, pointer and BusyBox userspace are ready."
+echo "  No Casio firmware or NOR flash was modified."
+echo

@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# Small lsblk replacement for the EX-word initramfs.  /proc/partitions
+# already reports sizes in KiB, so this needs neither awk nor shell math.
+
+if [ ! -r /proc/partitions ]; then
+	echo "lsblk: /proc/partitions is unavailable" >&2
+	exit 1
+fi
+
+printf '%-13s %-7s %10s %2s %2s %-5s %s\n' \
+	NAME MAJ:MIN KiB RM RO TYPE MOUNT
+
+while read -r major minor blocks name; do
+	case "$major" in
+		''|major) continue ;;
+	esac
+
+	sys=/sys/class/block/$name
+	removable=?
+	readonly=?
+	[ ! -r "$sys/removable" ] || read -r removable < "$sys/removable"
+	[ ! -r "$sys/ro" ] || read -r readonly < "$sys/ro"
+
+	type=disk
+	[ ! -r "$sys/partition" ] || type=part
+	case "$name" in
+		loop*) type=loop ;;
+		mtdblock*) type=mtd ;;
+		ram*) type=ram ;;
+		zram*) type=zram ;;
+	esac
+
+	where=-
+	while read -r source target filesystem options rest; do
+		if [ "$source" = "/dev/$name" ]; then
+			where=$target
+			break
+		fi
+	done < /proc/mounts
+
+	while read -r source swap_type swap_size swap_used priority; do
+		if [ "$source" = "/dev/$name" ]; then
+			where='[SWAP]'
+			break
+		fi
+	done < /proc/swaps
+
+	printf '%-13s %3s:%-3s %10s %2s %2s %-5s %s\n' \
+		"$name" "$major" "$minor" "$blocks" \
+		"$removable" "$readonly" "$type" "$where"
+done < /proc/partitions

@@ -1,0 +1,89 @@
+#!/bin/sh
+
+xroot=/opt/x11
+xbin=$xroot/usr/bin
+
+if [ ! -x "$xbin/Xfbdev" ] || [ ! -x "$xbin/twm" ]; then
+	echo "startx: X11 image is not mounted at $xroot" >&2
+	exit 1
+fi
+
+export HOME=/root
+export USER=root
+export LOGNAME=root
+export DISPLAY=:0
+export LC_ALL=C
+export SHELL=/bin/sh
+export PATH=$xbin:/sbin:/bin:/usr/sbin:/usr/bin
+export LD_LIBRARY_PATH=$xroot/lib:$xroot/usr/lib
+export TERMINFO=$xroot/usr/share/terminfo
+
+keyboard_event=
+pointer_event=
+for event_dir in /sys/class/input/event*; do
+	[ -r "$event_dir/device/name" ] || continue
+	event_name=${event_dir##*/}
+	device_name=$(cat "$event_dir/device/name" 2>/dev/null)
+	case "$device_name" in
+		"EX-word keypad") keyboard_event=/dev/input/$event_name ;;
+		"EX-word pointer") pointer_event=/dev/input/$event_name ;;
+	esac
+done
+if [ -z "$keyboard_event" ] || [ -z "$pointer_event" ]; then
+	echo "startx: EX-word keyboard or pointer input device is missing" >&2
+	exit 1
+fi
+
+mkdir -p /tmp/.X11-unix /tmp/xkb
+chmod 1777 /tmp/.X11-unix
+chmod 700 /tmp/xkb
+rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 /tmp/Xfbdev.log
+
+echo "Starting X.Org Xfbdev on VT2..."
+echo "POWER toggles mouse mode; arrows move; ENTER/ZOOM/BACK click L/M/R."
+echo "Use the root menu or switch mouse mode off and press BACK+Q to quit."
+
+"$xbin/Xfbdev" :0 -fb /dev/fb0 vt2 \
+	-keybd evdev,,device=$keyboard_event,XkbRules=evdev,XkbModel=pc105,XkbLayout=us \
+	-mouse evdev,,device=$pointer_event \
+	-softCursor -nolisten tcp -ac -noreset -s 0 -bs > /tmp/Xfbdev.log 2>&1 &
+xpid=$!
+
+cleanup()
+{
+	if kill -0 "$xpid" 2>/dev/null; then
+		kill "$xpid" 2>/dev/null || true
+	fi
+	wait "$xpid" 2>/dev/null || true
+	rm -f /tmp/.X0-lock /tmp/.X11-unix/X0
+}
+trap cleanup EXIT HUP INT TERM
+
+# BusyBox ash was built without arithmetic expansion to save memory.  Four
+# fixed loops provide the former 32768-attempt bound without shell math.  A real
+# subshell fork/wait hands the CPU to Xfbdev without relying on the EX-word's
+# still-provisional hardware timer.
+for wait_a in a b c d e f g h; do
+	for wait_b in a b c d e f g h i j k l m n o p; do
+		for wait_c in a b c d e f g h i j k l m n o p; do
+			for wait_d in a b c d e f g h i j k l m n o p; do
+				[ -e /tmp/.X11-unix/X0 ] && break 4
+				if ! kill -0 "$xpid" 2>/dev/null; then
+					echo "startx: Xfbdev stopped during startup" >&2
+					cat /tmp/Xfbdev.log >&2
+					exit 1
+				fi
+				( : )
+			done
+		done
+	done
+done
+if [ ! -e /tmp/.X11-unix/X0 ]; then
+	echo "startx: timed out waiting for Xfbdev" >&2
+	cat /tmp/Xfbdev.log >&2
+	exit 1
+fi
+
+"$xbin/twm" -f "$xroot/etc/X11/twmrc"
+result=$?
+exit "$result"

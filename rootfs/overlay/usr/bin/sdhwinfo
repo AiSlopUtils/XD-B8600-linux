@@ -1,0 +1,55 @@
+#!/bin/sh
+
+# Read-only snapshot of the firmware's SH7724 storage handoff.  Do not touch
+# either storage controller here: a stopped peripheral clock can make those
+# register accesses unsafe.  These PFC/CPG registers remain readable.
+
+show16()
+{
+	printf '%-9s ' "$1"
+	devmem "$2" 16 2>&1 || echo unavailable
+}
+
+show32()
+{
+	printf '%-9s ' "$1"
+	devmem "$2" 32 2>&1 || echo unavailable
+}
+
+echo "EX-word storage handoff (read-only)"
+echo "=================================="
+echo
+echo "Platform device:"
+if [ -r /sys/bus/platform/devices/sh_mobile_sdhi.1/driver_override ]; then
+	printf 'override  '
+	read -r override < \
+		/sys/bus/platform/devices/sh_mobile_sdhi.1/driver_override
+	echo "$override"
+else
+	echo "override  device missing"
+fi
+if [ -L /sys/bus/platform/devices/sh_mobile_sdhi.1/driver ]; then
+	printf 'driver    '
+	readlink /sys/bus/platform/devices/sh_mobile_sdhi.1/driver
+else
+	echo "driver    unbound"
+fi
+
+echo
+echo "Pin-function controller:"
+show16 PSELA  0x0405014e
+show16 PSELE  0x04050156
+show16 PWCR   0x04050146
+show16 HIZCRC 0x0405015c
+
+echo
+echo "Clock generator:"
+show32 FRQCRA  0x04150000
+show32 FRQCRB  0x04150004
+show32 PLLCR   0x04150024
+show32 FLLFRQ  0x04150050
+show32 MSTPCR2 0x04150038
+
+echo
+echo "SDHI1 mux requires PSELA bit 13 = 1 and PSELE bits 13:12 = 01."
+echo "MMCIF mux instead uses zero for those fields. No register was written."

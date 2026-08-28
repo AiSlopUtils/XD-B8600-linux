@@ -1,0 +1,26 @@
+From: EX-word Linux build <build@exword.local>
+Subject: [PATCH] c-stack: handle glibc's dynamic SIGSTKSZ
+
+glibc 2.34 and newer may define SIGSTKSZ using sysconf(), so it cannot be
+used in a preprocessor integer comparison.  The libsigsegv workaround only
+needs a conservative alternate-stack size when libsigsegv is enabled.
+
+---
+ lib/c-stack.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/c-stack.c b/lib/c-stack.c
+index 5747eaa..9a7e707 100644
+--- a/lib/c-stack.c
++++ b/lib/c-stack.c
+@@ -52,7 +52,7 @@ typedef struct sigaltstack stack_t;
+ #endif
+ #ifndef SIGSTKSZ
+ # define SIGSTKSZ 16384
+-#elif HAVE_LIBSIGSEGV && SIGSTKSZ < 16384
++#elif HAVE_LIBSIGSEGV
+ /* libsigsegv 2.6 through 2.8 have a bug where some architectures use
+    more than the Linux default of an 8k alternate stack when deciding
+    if a fault was caused by stack overflow.  */
+-- 
+2.39.5

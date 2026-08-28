@@ -1,0 +1,204 @@
+#!/bin/sh
+
+# Safely manage swap on the EX-word's removable SD card.  The helper never
+# guesses between cards or partitions and never writes until the caller uses
+# the exact two-word confirmation "prepare erase".
+
+usage()
+{
+	echo "Usage: sdswap [status|on|off]"
+	echo "       sdswap prepare [erase]"
+	echo "  status   inspect the uniquely detected removable SD target"
+	echo "  on       enable an existing swap signature"
+	echo "  off      disable swap on that target"
+	echo "  prepare  show the target; the exact 'erase' token confirms writing"
+}
+
+fail()
+{
+	echo "sdswap: $*" >&2
+	exit 1
+}
+
+is_swap()
+{
+	info=$(blkid "$1" 2>/dev/null)
+	case "$info" in
+		*'TYPE="swap"'*) return 0 ;;
+	esac
+	return 1
+}
+
+is_active()
+{
+	wanted_path=$(readlink -f "$1" 2>/dev/null)
+	while read -r source swap_type swap_size swap_used priority; do
+		[ "$source" != "$1" ] || return 0
+		active_path=$(readlink -f "$source" 2>/dev/null)
+		[ -z "$wanted_path" ] || [ "$active_path" != "$wanted_path" ] || \
+			return 0
+	done < /proc/swaps
+	return 1
+}
+
+is_mounted()
+{
+	block_name=${1##*/}
+	block_id=
+	[ ! -r "/sys/class/block/$block_name/dev" ] || \
+		read -r block_id < "/sys/class/block/$block_name/dev"
+	if [ -n "$block_id" ] && [ -r /proc/self/mountinfo ]; then
+		while read -r mount_id parent_id mounted_id root mountpoint rest; do
+			[ "$mounted_id" != "$block_id" ] || return 0
+		done < /proc/self/mountinfo
+		return 1
+	fi
+
+	while read -r mnt_source mnt_target mnt_filesystem mnt_options mnt_rest; do
+		[ "$mnt_source" != "$1" ] || return 0
+	done < /proc/mounts
+	return 1
+}
+
+find_target()
+{
+	card=
+	for sys in /sys/class/block/mmcblk*; do
+		[ -e "$sys" ] || continue
+		name=${sys##*/}
+		[ ! -r "$sys/partition" ] || continue
+		case "$name" in
+			*boot*|*rpmb*) continue ;;
+		esac
+		removable=
+		[ ! -r "$sys/removable" ] || \
+			read -r removable < "$sys/removable"
+		[ "$removable" = 1 ] || continue
+		[ -z "$card" ] || \
+			fail "more than one removable MMC device; refusing to guess"
+		card=$name
+	done
+	[ -n "$card" ] || fail "no removable mmcblk device found"
+	[ -b "/dev/$card" ] || fail "/dev/$card is not a block device"
+
+	first_part=
+	many_parts=
+	swap_part=
+	many_swaps=
+	for sys in /sys/class/block/"$card"p*; do
+		[ -r "$sys/partition" ] || continue
+		name=${sys##*/}
+		[ -b "/dev/$name" ] || continue
+		if [ -z "$first_part" ]; then
+			first_part=$name
+		else
+			many_parts=yes
+		fi
+		if is_swap "/dev/$name"; then
+			if [ -z "$swap_part" ]; then
+				swap_part=$name
+			else
+				many_swaps=yes
+			fi
+		fi
+	done
+
+	if [ -z "$first_part" ]; then
+		target=$card
+	elif [ -z "$many_parts" ]; then
+		target=$first_part
+	elif [ -n "$swap_part" ] && [ -z "$many_swaps" ]; then
+		target=$swap_part
+	else
+		fail "$card has multiple partitions and no unique swap partition"
+	fi
+	device=/dev/$target
+}
+
+show_status()
+{
+	size=unknown
+	while read -r major minor blocks name; do
+		if [ "$name" = "$target" ]; then
+			size="${blocks} KiB"
+			break
+		fi
+	done < /proc/partitions
+
+	state="not swap"
+	if is_swap "$device"; then
+		state="swap ready"
+	fi
+	if is_active "$device"; then
+		state="swap active"
+	fi
+	if is_mounted "$device"; then
+		state="mounted filesystem"
+	fi
+
+	echo "SD card: $card"
+	echo "Target:  $device ($size)"
+	echo "State:   $state"
+	blkid "$device" 2>/dev/null || true
+}
+
+command=${1:-status}
+case "$command" in
+	status|on|off|prepare) ;;
+	-h|--help|help) usage; exit 0 ;;
+	*) usage >&2; exit 2 ;;
+esac
+if [ "$#" -gt 2 ]; then
+	fail "too many arguments"
+fi
+if [ "$#" -eq 2 ]; then
+	[ "$command" = prepare ] && [ "$2" = erase ] || \
+		fail "the only accepted confirmation is: sdswap prepare erase"
+fi
+
+find_target
+
+case "$command" in
+	status)
+		show_status
+		;;
+	on)
+		is_mounted "$device" && fail "$device is mounted"
+		is_swap "$device" || \
+			fail "$device has no swap signature; use 'sdswap prepare' only if it may be erased"
+		if is_active "$device"; then
+			echo "$device is already active swap"
+			exit 0
+		fi
+		swapon "$device" || fail "swapon failed for $device"
+		echo "Enabled swap on $device"
+		;;
+	off)
+		if ! is_active "$device"; then
+			echo "$device is not active swap"
+			exit 0
+		fi
+		swapoff "$device" || fail "swapoff failed for $device"
+		echo "Disabled swap on $device"
+		;;
+	prepare)
+		if [ "${2:-}" != erase ]; then
+			show_status
+			echo
+			echo "No data was changed. To erase exactly $device, run:"
+			echo "  sdswap prepare erase"
+			exit 0
+		fi
+		is_active "$device" && fail "$device is active swap; run 'sdswap off' first"
+		is_mounted "$device" && fail "$device is mounted; unmount it first"
+		[ -b "$device" ] || fail "$device disappeared"
+		[ -r "/sys/class/block/$target/ro" ] || \
+			fail "cannot verify whether $device is read-only"
+		read -r readonly < "/sys/class/block/$target/ro"
+		[ "$readonly" != 1 ] || fail "$device is read-only"
+		[ "$readonly" = 0 ] || fail "invalid read-only state for $device"
+		echo "Confirmed: erasing $device and creating Linux swap"
+		mkswap -L EXSWAP "$device" || fail "mkswap failed for $device"
+		echo "Prepared $device. Run 'sdswap on' to enable it."
+		;;
+esac
