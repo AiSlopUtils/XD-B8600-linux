@@ -7,7 +7,8 @@ for script in \
 	"$repo"/scripts/*.sh \
 	"$repo"/kernel/*.sh \
 	"$repo"/rootfs/*.sh \
-	"$repo"/x11/*.sh
+	"$repo"/x11/*.sh \
+	"$repo"/x11/config/usr/bin/*
 do
 	[ -f "$script" ] || continue
 	first_line=$(sed -n '1p' "$script")
@@ -17,6 +18,29 @@ do
 	esac
 	printf 'OK  syntax %s\n' "${script#"$repo"/}"
 done
+
+for required in \
+	"$repo/x11/apps/exdesk.c" \
+	"$repo/x11/apps/subpad-mouse.c" \
+	"$repo/x11/apps/sublcd-test.c" \
+	"$repo/x11/apps/touchdiag.c" \
+	"$repo/x11/apps/x11-start-gate.c" \
+	"$repo/x11/awesome/0001-exword-awesome-1.3.patch" \
+	"$repo/x11/buildroot-overlay/package/xterm/0001-linux-use-unix98-pty-session.patch"
+do
+	[ -s "$required" ] || {
+		echo "missing X11 source input: ${required#"$repo"/}" >&2
+		exit 1
+	}
+done
+
+# Parse the two upstream patches even when their downloaded source trees are
+# absent.  This catches a truncated/corrupt patch in an offline clean clone.
+git apply --numstat \
+	"$repo/x11/awesome/0001-exword-awesome-1.3.patch" >/dev/null
+git apply --numstat \
+	"$repo/x11/buildroot-overlay/package/xterm/0001-linux-use-unix98-pty-session.patch" >/dev/null
+echo "OK  X11 pinned patches and helper sources"
 
 for source in "$repo"/payload/*.py; do
 	[ -f "$source" ] || continue

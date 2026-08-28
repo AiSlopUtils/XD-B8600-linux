@@ -7,7 +7,9 @@ XD-B8600/DATAPLUS 6 that this port was developed on.
 > [!CAUTION]
 > Remove the SD card before booting Linux. SDHI is intentionally disabled
 > because the inherited clock tree is not understood yet. Do not bind the
-> SDHI driver manually. Do not use libexword's `format` command.
+> SDHI driver manually. Do not use libexword's `format` command. The v9
+> secondary-display/touch helpers contain raw addresses measured only on the
+> XD-B8600; never boot this payload or run those helpers on another model.
 
 ## 1. Clone and verify
 
@@ -99,13 +101,28 @@ and run `make loader`. That path downloads a checksum-pinned devkitSH4 SDK,
 builds in a Linux/amd64 container, compares the result with the supplied
 artifact, and stages the same installable directory.
 
-## 4. Transfer the Linux payload
+## 4. Choose the Linux payload
 
-`artifacts/LINUX.PAY` is the latest USB-readback-verified candidate, but its
-final post-SDHI-guard boot had not yet been confirmed on hardware when this
-repository was published. Earlier hash-verified milestones remain under
-`artifacts/milestones/` for regression testing. Keep the SD card removed for
-every payload documented here.
+There are two supported paths:
+
+- `artifacts/LINUX.PAY` is the checked-in, hash-verified recovery/reference
+  payload. `make verify` checks it without a target build.
+- `build/LINUX-from-source.PAY` is the complete source-built payload with the
+  working v9 AwesomeWM desktop. Build it with Docker using:
+
+    ```sh
+    JOBS=4 make all
+    ```
+
+The v9 source path includes one AwesomeWM desktop, the Start menu and
+`exdesk` utilities, the one-instance xterm wrapper, text-only screenfetch,
+and the userspace secondary-LCD/touch mouse. Earlier hash-verified milestones
+remain under `artifacts/milestones/` for regression testing. Keep the SD card
+removed for every payload documented here.
+
+## 5. Transfer and read back the payload
+
+### Checked-in recovery payload
 
 Create a separate readback directory so the verification download cannot
 overwrite the repository artifact:
@@ -136,7 +153,37 @@ cmp artifacts/LINUX.PAY build/readback/LINUX.PAY
 No output from `cmp` means they are identical. You can also rerun
 `make verify` to check the source artifact's recorded SHA-256.
 
-## 5. Boot
+### Source-built v9 payload
+
+Keep the outgoing file separate from the readback file:
+
+```sh
+mkdir -p build/upload-v9 build/readback-v9
+cp build/LINUX-from-source.PAY build/upload-v9/LINUX.PAY
+cd build/readback-v9
+../../scripts/run-libexword.sh
+```
+
+In text-transfer USB mode, enter:
+
+```text
+connect text ja
+send ../upload-v9/LINUX.PAY
+get LINUX.PAY
+disconnect
+exit
+```
+
+Return to the repository root and require an exact match:
+
+```sh
+cd ../..
+cmp build/upload-v9/LINUX.PAY build/readback-v9/LINUX.PAY
+```
+
+Do not boot if `cmp` prints a difference or returns a failure status.
+
+## 6. Boot
 
 1. Safely leave USB mode and disconnect the cable.
 2. Confirm that the SD slot is empty.
@@ -149,20 +196,40 @@ No output from `cmp` means they are identical. You can also rerun
    transfer control. X-capable builds take noticeably longer than a normal
    add-in to start.
 
-At the BusyBox prompt, run `startx` for Xfbdev and twm. The loader and Linux
-payload run from RAM and do not replace Casio firmware or write NOR flash.
+At the BusyBox prompt, run `startx`. The v9 image starts Xfbdev, draws the
+six-button secondary pad, starts its supervised touch-to-pointer helper, and
+then launches AwesomeWM. The first X startup is slow on this 16 MiB system;
+wait for the desktop and Start bar instead of repeatedly pressing keys.
 
-## Using a source-built payload
+The loader and Linux payload run from RAM and do not replace Casio firmware
+or write NOR flash.
 
-After `make all`, the complete source-built image is
-`build/LINUX-from-source.PAY`. Copy it into the readback directory under the
-name expected by the loader, then use the same text-transfer procedure:
+## 7. Using the v9 desktop
 
-```sh
-cp build/LINUX-from-source.PAY build/readback/LINUX.PAY
-cd build/readback
-../../scripts/run-libexword.sh
-```
+The desktop deliberately has one workspace. Click the Start button in the
+bottom-left corner to open:
 
-At the prompt, use `send LINUX.PAY`. Keep the checked-in
-`artifacts/LINUX.PAY` as the recovery/reference candidate.
+- File Manager;
+- Command Prompt;
+- Task Manager;
+- System Information;
+- Disk Information;
+- Clock; and
+- Eyes.
+
+The secondary screen is divided into left/up/right across the top and
+left-click/down/right-click across the bottom. The keyboard's Power key still
+toggles the main-keypad pointer mode. With that mode enabled, arrows move and
+Enter/Zoom/Back click left/middle/right. Turn keyboard pointer mode off and
+press Back+Q to exit AwesomeWM.
+
+Only one xterm can run at once. If a terminal-backed Start item appears to do
+nothing, close the current xterm first. This limit prevents repeated launches
+from exhausting RAM. `/tmp/xterm.log` records the most recent terminal exit;
+`/tmp/subpad-mouse.log` records secondary-pad startup diagnostics.
+
+If the secondary LCD is not drawn or touch does not move the pointer, leave X
+with Back+Q and inspect the logs from the text console. Do not run the raw
+secondary-display or ADC diagnostics from xterm, do not enable an experimental
+kernel subpad driver, and do not retry MMIO helpers on a different EX-word
+model.

@@ -5,15 +5,17 @@ patch, packager, and Docker recipe needed to rebuild the device-side
 software. Large upstream source trees and compilers are downloaded on demand
 at recorded versions instead of being committed as generated files.
 
-There are two useful build paths:
+There are three useful build paths:
 
 - `make payload` rebuilds Linux and the initramfs around the supplied,
   verified BusyBox and X11 images. This is the faster recovery/development
   path.
-- `make all` rebuilds Xfbdev/twm/xterm, BusyBox, the initramfs, Linux payload,
-  and LNX03 application using pinned sources and the checksum-pinned historical
-  SDK. This is the clean-clone completeness test; the SDK contains prebuilt
-  Casio support libraries and is not itself rebuilt.
+- `make x11` rebuilds the complete v9 GUI: Xfbdev, patched AwesomeWM 1.3,
+  xterm, the `exdesk` applications, and the userspace secondary-pad helpers.
+- `make all` combines that GUI with a rebuilt BusyBox, initramfs, Linux
+  payload, and LNX03 application using pinned sources and the checksum-pinned
+  historical SDK. This is the clean-clone completeness test; the SDK contains
+  prebuilt Casio support libraries and is not itself rebuilt.
 
 ## Supported build hosts and prerequisites
 
@@ -112,9 +114,11 @@ JOBS=4 make all
 
 The dependency order is intentional:
 
-1. `scripts/build-x11.sh` clones pinned Buildroot 2019.02.11, applies the
-   checked-in compatibility/Xfbdev overlay, builds the big-endian musl SH-4A
-   toolchain and X packages, and writes `build/x11-xterm.sqfs`.
+1. `scripts/build-x11.sh` clones pinned Buildroot 2019.02.11 and AwesomeWM 1.3,
+   verifies their exact commits, applies the checked-in compatibility,
+   Xfbdev, xterm, and Awesome patches, builds the big-endian musl SH-4A
+   toolchain and X packages, builds the EX-word GUI helpers, and writes
+   `build/x11-xterm.sqfs`.
 2. `scripts/build-busybox.sh` reconstructs the release toolchain from pinned
    musl 1.2.5, Linux 6.1 userspace headers, Ubuntu's SH compiler, and the
    checksum-pinned devkitSH4 `libgcc`, then builds a static ELF32 big-endian
@@ -140,6 +144,50 @@ See [../x11/README.md](../x11/README.md),
 [../rootfs/README.md](../rootfs/README.md), and
 [../loader/README.md](../loader/README.md) for each subsystem's validation
 and output details.
+
+## v9 X11 desktop build
+
+Build the complete GUI independently with:
+
+```sh
+JOBS=4 make x11
+```
+
+The public build path performs all preparation; no generated Awesome or
+Buildroot tree needs to be copied into the checkout. It verifies AwesomeWM
+commit `d4f1b99c93c7da10af774500f3c007e77a765c5d`, applies the repository's
+AwesomeWM 1.3 patch, and cross-builds the following small runtime set:
+
+- X.Org Xfbdev, XKB data, and one fixed-font keymap;
+- a patched AwesomeWM 1.3 with one `Desktop` workspace and one bottom-left
+  Start button;
+- `exdesk`, exposed as the Start menu, file manager, clock, and eyes programs;
+- patched xterm plus a one-instance wrapper;
+- the X startup gate and the XD-B8600 secondary-LCD/touch helpers; and
+- a text-only screenfetch-style system summary.
+
+The resulting `build/x11-xterm.sqfs` is read-only and is rejected if its ELF
+closure is incomplete, a target executable is not ELF32 big-endian SuperH,
+or it exceeds the fixed `0x350000`-byte payload slot. Combine it with the
+normal kernel build using:
+
+```sh
+./scripts/build-payload.sh \
+  build/kernel/arch/sh/boot/zImage build/x11-xterm.sqfs build/LINUX.PAY
+```
+
+The wrapper deliberately permits only one xterm at a time. On a 16 MiB
+machine, several simultaneous xterms can make the desktop unresponsive or
+invoke the OOM killer. The lock lives under `/tmp`, is cleared at boot, and is
+removed when the terminal exits.
+
+The secondary pad is not driven by a generic kernel driver. The X startup
+wrapper draws the six-button image through the firmware-initialized secondary
+LCD bus, and a supervised root-only userspace process reads the measured
+XD-B8600 ADC/PFC registers and injects pointer events through XTEST. These
+helpers validate the main framebuffer and refuse the experimental kernel
+subpad interface. Do not enable that abandoned interface or run the helpers
+on another EX-word model.
 
 ## Host USB transfer tool
 
@@ -194,6 +242,9 @@ kernel relocation region begins. Both build scripts reject an overlap.
 - Source archives and the devkitSH4 SDK are checksum-pinned. Buildroot is
   pinned to an exact Git commit, tries the official Buildroot source mirror
   first, and verifies its own package downloads.
+- AwesomeWM is pinned to exact commit
+  `d4f1b99c93c7da10af774500f3c007e77a765c5d`; the EX-word changes are stored
+  as a source-controlled patch and applied only after the revision check.
 - Ubuntu base tags and apt repositories in the Dockerfiles are not frozen by
   snapshot date. Build scripts compensate with target architecture, static
   linkage, closure, size, CRC, and (for the loader) exact-artifact checks.

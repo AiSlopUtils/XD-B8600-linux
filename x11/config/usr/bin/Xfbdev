@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Draw once while the launching VT is still text-mode and before Xfbdev can
+# present the main framebuffer.  The test drains exwordfb and leaves DC high.
+if [ -x /opt/x11/usr/bin/sublcd-test ]; then
+	/opt/x11/usr/bin/sublcd-test pattern pad --yes \
+		< /dev/tty1 > /tmp/sublcd-pad.log 2>&1 || true
+fi
+
+exec /opt/x11/usr/bin/Xfbdev.gate "$@"

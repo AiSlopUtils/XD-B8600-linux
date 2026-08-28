@@ -1,0 +1,640 @@
+diff --git a/awesome.c b/awesome.c
+index c728830..4b59aa0 100644
+--- a/awesome.c
++++ b/awesome.c
+@@ -67,7 +67,7 @@ cleanup(DC *drawcontext, awesome_config *awesomeconf)
+ 
+     for(screen = 0; screen < get_screen_count(awesomeconf->display); screen++)
+     {
+-        XftFontClose(awesomeconf->display, drawcontext->font);
++        XFreeFont(awesomeconf->display, drawcontext->font);
+ 
+         XUngrabKey(awesomeconf->display, AnyKey, AnyModifier, RootWindow(awesomeconf->display, awesomeconf[screen].phys_screen));
+ 
+@@ -196,6 +196,15 @@ setup(DC *drawcontext, awesome_config *awesomeconf)
+ 
+     XChangeWindowAttributes(awesomeconf->display, RootWindow(awesomeconf->display, awesomeconf->phys_screen), CWEventMask | CWCursor, &wa);
+ 
++    /* A solid server-side desktop costs no wallpaper process or pixmap. */
++    XSetWindowBackground(awesomeconf->display,
++                         RootWindow(awesomeconf->display,
++                                    awesomeconf->phys_screen),
++                         awesomeconf->desktop_bg);
++    XClearWindow(awesomeconf->display,
++                 RootWindow(awesomeconf->display,
++                            awesomeconf->phys_screen));
++
+     XSelectInput(awesomeconf->display, RootWindow(awesomeconf->display, awesomeconf->phys_screen), wa.event_mask);
+ 
+     grabkeys(awesomeconf->display, awesomeconf->phys_screen, awesomeconf);
+@@ -203,7 +212,9 @@ setup(DC *drawcontext, awesome_config *awesomeconf)
+     compileregs(awesomeconf->rules, awesomeconf->nrules);
+ 
+     /* bar */
+-    drawcontext->h = awesomeconf->statusbar.height = drawcontext->font->height + 2;
++    /* Slightly taller than stock for the Windows 2000 taskbar look. */
++    drawcontext->h = awesomeconf->statusbar.height =
++        drawcontext->font->ascent + drawcontext->font->descent + 6;
+     initstatusbar(awesomeconf->display, awesomeconf->screen, drawcontext, &awesomeconf->statusbar);
+     drawcontext->gc = XCreateGC(awesomeconf->display, RootWindow(awesomeconf->display, awesomeconf->phys_screen), 0, 0);
+     XSetLineAttributes(awesomeconf->display, drawcontext->gc, 1, LineSolid, CapButt, JoinMiter);
+@@ -289,15 +300,15 @@ main(int argc, char *argv[])
+             printf("awesome-" VERSION " © 2007 Julien Danjou\n");
+             return EXIT_SUCCESS;
+         }
+-        else if(!a_strcmp("-c", argv[1]))
++        else if(!a_strcmp("-c", argv[1]) || !a_strcmp("-f", argv[1]))
+         {
+-            if(a_strlen(argv[2]))
++            if(argc >= 3 && a_strlen(argv[2]))
+                 confpath = argv[2];
+             else
+-                eprint("awesome: -c require a file\n");
++                eprint("awesome: -c/-f requires a file\n");
+         }
+         else
+-            eprint("usage: awesome [-v | -c configfile]\n");
++            eprint("usage: awesome [-v | -c configfile | -f configfile]\n");
+     }
+ 
+     /* Tag won't be printed otherwised */
+diff --git a/config.c b/config.c
+index d06234d..725ea83 100644
+--- a/config.c
++++ b/config.c
+@@ -41,6 +41,40 @@
+ static XColor initxcolor(Display *, int, const char *);
+ static unsigned int get_numlockmask(Display *);
+ 
++/* libconfig 1.3 and later return success and write through an output
++ * pointer.  awesome 1.3 predates that API and expected the value itself. */
++static const char *
++config_get_string(const config_t *config, const char *path)
++{
++    const char *value = NULL;
++    config_lookup_string(config, path, &value);
++    return value;
++}
++
++static int
++config_get_int(const config_t *config, const char *path)
++{
++    int value = 0;
++    config_lookup_int(config, path, &value);
++    return value;
++}
++
++static double
++config_get_float(const config_t *config, const char *path)
++{
++    double value = 0.0;
++    config_lookup_float(config, path, &value);
++    return value;
++}
++
++static int
++config_get_bool(const config_t *config, const char *path)
++{
++    int value = 0;
++    config_lookup_bool(config, path, &value);
++    return value;
++}
++
+ /** Link a name to a function */
+ typedef struct
+ {
+@@ -195,7 +229,8 @@ parse_config(Display * disp, int scr, DC * drawcontext, const char *confpatharg,
+ 
+     config_init(&awesomelibconf);
+ 
+-    a_strcpy(awesomeconf->statustext, sizeof(awesomeconf->statustext), "awesome-" VERSION);
++    a_strcpy(awesomeconf->statustext, sizeof(awesomeconf->statustext),
++             "EX-WORD 2000");
+ 
+     /* store display */
+     awesomeconf->display = disp;
+@@ -210,8 +245,8 @@ parse_config(Display * disp, int scr, DC * drawcontext, const char *confpatharg,
+ 
+ 
+     /* font */
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.font");
+-    drawcontext->font = XftFontOpenName(disp, awesomeconf->phys_screen, tmp ? tmp : "sans-12");
++    tmp = config_get_string(&awesomelibconf, "awesome.font");
++    drawcontext->font = XLoadQueryFont(disp, tmp ? tmp : "fixed");
+ 
+     if(!drawcontext->font)
+         eprint("awesome: cannot init font\n");
+@@ -258,7 +293,7 @@ parse_config(Display * disp, int scr, DC * drawcontext, const char *confpatharg,
+ 
+     for(i = 0; i < awesomeconf->nlayouts; i++)
+     {
+-        j = drawcontext->font->height +
++        j = drawcontext->font->ascent + drawcontext->font->descent +
+             textwidth(disp, drawcontext->font,
+                       awesomeconf->layouts[i].symbol, a_strlen(awesomeconf->layouts[i].symbol));
+         if(j > awesomeconf->statusbar.width)
+@@ -332,7 +367,7 @@ parse_config(Display * disp, int scr, DC * drawcontext, const char *confpatharg,
+     }
+ 
+     /* modkey */
+-    tmp_key = key_mask_lookup(config_lookup_string(&awesomelibconf, "awesome.modkey"));
++    tmp_key = key_mask_lookup(config_get_string(&awesomelibconf, "awesome.modkey"));
+     awesomeconf->modkey = tmp_key ? tmp_key : Mod1Mask;
+ 
+     /* find numlock mask */
+@@ -364,7 +399,7 @@ parse_config(Display * disp, int scr, DC * drawcontext, const char *confpatharg,
+     }
+ 
+     /* barpos */
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.barpos");
++    tmp = config_get_string(&awesomelibconf, "awesome.barpos");
+ 
+     if(tmp && !a_strncmp(tmp, "off", 6))
+         awesomeconf->statusbar_default_position = BarOff;
+@@ -376,59 +411,74 @@ parse_config(Display * disp, int scr, DC * drawcontext, const char *confpatharg,
+     awesomeconf->statusbar.position = awesomeconf->statusbar_default_position;
+ 
+     /* borderpx */
+-    awesomeconf->borderpx = config_lookup_int(&awesomelibconf, "awesome.borderpx");
++    awesomeconf->borderpx = config_get_int(&awesomelibconf, "awesome.borderpx");
+ 
+     /* opacity */
+-    awesomeconf->opacity_unfocused = config_lookup_int(&awesomelibconf, "awesome.opacity_unfocused");
++    awesomeconf->opacity_unfocused = config_get_int(&awesomelibconf, "awesome.opacity_unfocused");
+     if(awesomeconf->opacity_unfocused >= 100 || awesomeconf->opacity_unfocused == 0)
+         awesomeconf->opacity_unfocused = -1;
+ 
+     /* snap */
+-    i = config_lookup_int(&awesomelibconf, "awesome.snap");
++    i = config_get_int(&awesomelibconf, "awesome.snap");
+     awesomeconf->snap = i ? i : 8;
+ 
+     /* nmaster */
+-    i = config_lookup_int(&awesomelibconf, "awesome.nmaster");
++    i = config_get_int(&awesomelibconf, "awesome.nmaster");
+     awesomeconf->nmaster = i ? i : 1;
+ 
+     /* ncols */
+-    i = config_lookup_int(&awesomelibconf, "awesome.ncols");
++    i = config_get_int(&awesomelibconf, "awesome.ncols");
+     awesomeconf->ncols = i ? i : 1;
+ 
+     /* mwfact */
+-    f = config_lookup_float(&awesomelibconf, "awesome.mwfact");
++    f = config_get_float(&awesomelibconf, "awesome.mwfact");
+     awesomeconf->mwfact = f ? f : 0.6;
+ 
+     /* resize_hints */
+-    awesomeconf->resize_hints = config_lookup_float(&awesomelibconf, "awesome.resize_hints");
++    awesomeconf->resize_hints = config_get_bool(&awesomelibconf, "awesome.resize_hints");
+ 
+     /* colors */
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.normal_border_color");
++    tmp = config_get_string(&awesomelibconf, "awesome.normal_border_color");
+     colorbuf = initxcolor(disp, awesomeconf->phys_screen, tmp ? tmp : "#dddddd");
+     drawcontext->norm[ColBorder] = colorbuf.pixel;
+ 
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.normal_bg_color");
++    tmp = config_get_string(&awesomelibconf, "awesome.normal_bg_color");
+     colorbuf = initxcolor(disp, awesomeconf->phys_screen, tmp ? tmp : "#000000");
+     drawcontext->norm[ColBG] = colorbuf.pixel;
+ 
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.normal_fg_color");
++    tmp = config_get_string(&awesomelibconf, "awesome.normal_fg_color");
+     colorbuf = initxcolor(disp, awesomeconf->phys_screen, tmp ? tmp : "#ffffff");
+     drawcontext->norm[ColFG] = colorbuf.pixel;
+     drawcontext->text_normal = colorbuf;
+ 
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.focus_border_color");
++    tmp = config_get_string(&awesomelibconf, "awesome.focus_border_color");
+     colorbuf = initxcolor(disp, awesomeconf->phys_screen, tmp ? tmp : "#008b8b");
+     drawcontext->sel[ColBorder] = colorbuf.pixel;
+ 
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.focus_bg_color");
++    tmp = config_get_string(&awesomelibconf, "awesome.focus_bg_color");
+     colorbuf = initxcolor(disp, awesomeconf->phys_screen, tmp ? tmp : "#008b8b");
+     drawcontext->sel[ColBG] = colorbuf.pixel;
+ 
+-    tmp = config_lookup_string(&awesomelibconf, "awesome.focus_fg_color");
++    tmp = config_get_string(&awesomelibconf, "awesome.focus_fg_color");
+     colorbuf = initxcolor(disp, awesomeconf->phys_screen, tmp ? tmp : "#ffffff");
+     drawcontext->sel[ColFG] = colorbuf.pixel;
+     drawcontext->text_selected = colorbuf;
+ 
++    tmp = config_get_string(&awesomelibconf, "awesome.desktop_bg_color");
++    colorbuf = initxcolor(disp, awesomeconf->phys_screen,
++                          tmp ? tmp : "#008080");
++    awesomeconf->desktop_bg = colorbuf.pixel;
++
++    tmp = config_get_string(&awesomelibconf, "awesome.bevel_light_color");
++    colorbuf = initxcolor(disp, awesomeconf->phys_screen,
++                          tmp ? tmp : "#ffffff");
++    drawcontext->bevel_light = colorbuf.pixel;
++
++    tmp = config_get_string(&awesomelibconf, "awesome.bevel_shadow_color");
++    colorbuf = initxcolor(disp, awesomeconf->phys_screen,
++                          tmp ? tmp : "#808080");
++    drawcontext->bevel_shadow = colorbuf.pixel;
++
+     config_destroy(&awesomelibconf);
+     p_delete(&confpath);
+ }
+diff --git a/config.h b/config.h
+index e8409f1..6dc063e 100644
+--- a/config.h
++++ b/config.h
+@@ -25,7 +25,6 @@
+ #define AWESOME_CONFIG_FILE ".awesomerc"
+ 
+ #include <X11/Xlib.h>
+-#include <X11/Xft/Xft.h>
+ 
+ /** Bar possible position */
+ enum
+@@ -42,11 +41,13 @@ typedef struct
+     int x, y, w, h;
+     unsigned long norm[ColLast];
+     unsigned long sel[ColLast];
++    unsigned long bevel_light;
++    unsigned long bevel_shadow;
+     XColor text_normal;
+     XColor text_selected;
+     GC gc;
+     Cursor cursor[CurLast];
+-    XftFont *font;
++    XFontStruct *font;
+ } DC;
+ 
+ typedef struct
+@@ -147,6 +148,8 @@ struct awesome_config
+     int opacity_unfocused;
+     /** Respect resize hints */
+     Bool resize_hints;
++    /** Root-window background color */
++    unsigned long desktop_bg;
+     /** Text displayed in bar */
+     char statustext[256];
+     /** Current layout */
+diff --git a/config.mk b/config.mk
+index d7bc302..2e33b01 100644
+--- a/config.mk
++++ b/config.mk
+@@ -10,16 +10,13 @@ LAYOUTS = layouts/tile.c layouts/floating.c layouts/max.c
+ PREFIX = /usr/local
+ MANPREFIX = ${PREFIX}/share/man
+ 
+-X11INC = /usr/include/X11
+-X11LIB = /usr/lib/X11
+-
+ # includes and libs
+-INCS = -I. -I/usr/include -I${X11INC} `pkg-config --cflags libconfig xft`
+-LIBS = -L/usr/lib -lc -L${X11LIB} -lX11 `pkg-config --libs libconfig xft` -lXext -lXrandr -lXinerama
++INCS = -I. `pkg-config --cflags libconfig x11 xext xrandr xinerama`
++LIBS = `pkg-config --libs libconfig x11 xext xrandr xinerama`
+ 
+ # flags
+-CFLAGS = -fgnu89-inline -std=gnu99 -ggdb3 -pipe -Wall -Wextra -W -Wchar-subscripts -Wundef -Wshadow -Wcast-align -Wwrite-strings -Wsign-compare -Wunused -Wuninitialized -Winit-self -Wpointer-arith -Wredundant-decls -Wno-format-zero-length -Wmissing-prototypes -Wmissing-format-attribute -Wmissing-noreturn -O3 ${INCS} -DVERSION=\"${VERSION}\"
+-LDFLAGS = -ggdb3 ${LIBS}
++CFLAGS = -fgnu89-inline -std=gnu99 -Os -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables -pipe -Wall -Wextra -W -Wchar-subscripts -Wundef -Wshadow -Wcast-align -Wwrite-strings -Wsign-compare -Wunused -Wuninitialized -Winit-self -Wpointer-arith -Wredundant-decls -Wno-format-zero-length -Wmissing-prototypes -Wmissing-format-attribute -Wmissing-noreturn ${INCS} -DVERSION=\"${VERSION}\"
++LDFLAGS = -Wl,--gc-sections ${LIBS}
+ 
+ # compiler and linker
+ CC = cc
+diff --git a/draw.c b/draw.c
+index 2da80b8..5585fec 100644
+--- a/draw.c
++++ b/draw.c
+@@ -30,9 +30,6 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
+     static char buf[256];
+     size_t len, olen;
+     XRectangle r = { drawcontext->x, drawcontext->y, drawcontext->w, drawcontext->h };
+-    XRenderColor xrcolor;
+-    XftColor xftcolor;
+-    XftDraw *xftdrawable;
+ 
+     XSetForeground(disp, drawcontext->gc, col[ColBG]);
+     XFillRectangles(disp, drawable, drawcontext->gc, &r, 1);
+@@ -44,7 +41,7 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
+         len = sizeof(buf) - 1;
+     memcpy(buf, text, len);
+     buf[len] = 0;
+-    h = drawcontext->font->height;
++    h = drawcontext->font->ascent + drawcontext->font->descent;
+     y = drawcontext->y + (drawcontext->h / 2) - (h / 2) + drawcontext->font->ascent;
+     x = drawcontext->x + (h / 2);
+     while(len && (w = textwidth(disp, drawcontext->font, buf, len)) > drawcontext->w - h)
+@@ -60,13 +57,9 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
+         if(len > 3)
+             buf[len - 3] = '.';
+     }
+-    xrcolor.red = textcolor.red;
+-    xrcolor.green = textcolor.green;
+-    xrcolor.blue = textcolor.blue;
+-    XftColorAllocValue(disp, DefaultVisual(disp, screen), DefaultColormap(disp, screen), &xrcolor, &xftcolor);
+-    xftdrawable = XftDrawCreate(disp, drawable, DefaultVisual(disp, screen), DefaultColormap(disp, screen));
+-    XftDrawStringUtf8(xftdrawable, &xftcolor, drawcontext->font, x, y, (FcChar8 *) buf, len);
+-    XftColorFree(disp, DefaultVisual(disp, screen), DefaultColormap(disp, screen), &xftcolor);
++    XSetForeground(disp, drawcontext->gc, textcolor.pixel);
++    XSetFont(disp, drawcontext->gc, drawcontext->font->fid);
++    XDrawString(disp, drawable, drawcontext->gc, x, y, buf, (int) len);
+ }
+ 
+ void
+@@ -91,11 +84,39 @@ drawsquare(Display *disp, DC drawcontext, Drawable drawable, Bool filled, unsign
+         XDrawRectangles(disp, drawable, drawcontext.gc, &r, 1);
+ }
+ 
++void
++drawbevel(Display *disp, DC drawcontext, Drawable drawable, Bool sunken)
++{
++    unsigned long upper, lower;
++
++    if(drawcontext.w < 2 || drawcontext.h < 2)
++        return;
++    upper = sunken ? drawcontext.bevel_shadow : drawcontext.bevel_light;
++    lower = sunken ? drawcontext.bevel_light : drawcontext.bevel_shadow;
++
++    XSetForeground(disp, drawcontext.gc, upper);
++    XDrawLine(disp, drawable, drawcontext.gc,
++              drawcontext.x, drawcontext.y,
++              drawcontext.x + drawcontext.w - 1, drawcontext.y);
++    XDrawLine(disp, drawable, drawcontext.gc,
++              drawcontext.x, drawcontext.y,
++              drawcontext.x, drawcontext.y + drawcontext.h - 1);
++
++    XSetForeground(disp, drawcontext.gc, lower);
++    XDrawLine(disp, drawable, drawcontext.gc,
++              drawcontext.x, drawcontext.y + drawcontext.h - 1,
++              drawcontext.x + drawcontext.w - 1,
++              drawcontext.y + drawcontext.h - 1);
++    XDrawLine(disp, drawable, drawcontext.gc,
++              drawcontext.x + drawcontext.w - 1, drawcontext.y,
++              drawcontext.x + drawcontext.w - 1,
++              drawcontext.y + drawcontext.h - 1);
++}
++
+ 
+ unsigned short
+-textwidth(Display *disp, XftFont *font, char *text, ssize_t len)
++textwidth(Display *disp, XFontStruct *font, char *text, ssize_t len)
+ {
+-    XGlyphInfo gi;
+-    XftTextExtentsUtf8(disp, font, (FcChar8 *) text, len, &gi);
+-    return gi.width;
++    (void) disp;
++    return XTextWidth(font, text, (int) len);
+ }
+diff --git a/draw.h b/draw.h
+index 0c70618..ab99e91 100644
+--- a/draw.h
++++ b/draw.h
+@@ -25,6 +25,7 @@
+ #include "config.h"
+ 
+ void drawsquare(Display *, DC, Drawable, Bool, unsigned long);
++void drawbevel(Display *, DC, Drawable, Bool);
+ void drawtext(Display *, int, DC *, Drawable, const char *, unsigned long *, XColor);
+-inline unsigned short textwidth(Display *, XftFont *, char *, ssize_t);
++inline unsigned short textwidth(Display *, XFontStruct *, char *, ssize_t);
+ #endif
+diff --git a/event.c b/event.c
+index 7b8a357..11045ef 100644
+--- a/event.c
++++ b/event.c
+@@ -153,38 +153,11 @@ handle_event_buttonpress(XEvent * e, awesome_config *awesomeconf)
+     for(screen = 0; screen < get_screen_count(e->xany.display); screen++)
+         if(awesomeconf[screen].statusbar.window == ev->window)
+         {
+-            for(i = 0; i < awesomeconf[screen].ntags; i++)
+-            {
+-                x += textwidth(e->xany.display, dc[screen].font, awesomeconf[screen].tags[i].name, a_strlen(awesomeconf[screen].tags[i].name)) + dc[screen].font->height;
+-                if(ev->x < x)
+-                {
+-                    if(ev->button == Button1)
+-                    {
+-                        if(ev->state & awesomeconf[screen].modkey)
+-                            uicb_tag(e->xany.display, &dc[screen], &awesomeconf[screen], awesomeconf[screen].tags[i].name);
+-                        else
+-                            uicb_view(e->xany.display, &dc[screen], &awesomeconf[screen], awesomeconf[screen].tags[i].name);
+-                    }
+-                    else if(ev->button == Button3)
+-                    {
+-                        if(ev->state & awesomeconf[screen].modkey)
+-                            uicb_toggletag(e->xany.display, &dc[screen], &awesomeconf[screen], awesomeconf[screen].tags[i].name);
+-                        else
+-                            uicb_toggleview(e->xany.display, &dc[screen], &awesomeconf[screen], awesomeconf[screen].tags[i].name);
+-                    }
+-                    else if(ev->button == Button4)
+-                        uicb_tag_viewnext(e->xany.display, &dc[screen], &awesomeconf[screen], NULL);
+-                    else if(ev->button == Button5)
+-                        uicb_tag_viewprev(e->xany.display, &dc[screen], &awesomeconf[screen], NULL);
+-                    return;
+-                }
+-            }
+-            x += awesomeconf[screen].statusbar.width;
+-            if(ev->x < x && (ev->button == Button1 || ev->button == Button4))
+-                uicb_setlayout(e->xany.display, &dc[screen], &awesomeconf[screen], "+1");
+-            else if(ev->x < x && (ev->button == Button3 || ev->button == Button5))
+-                uicb_setlayout(e->xany.display, &dc[screen], &awesomeconf[screen], "-1");
+-            else if(ev->button == Button4)
++            if(statusbar_launcher_click(e->xany.display, &dc[screen],
++                                        &awesomeconf[screen], x, ev->x,
++                                        ev->button))
++                return;
++            if(ev->button == Button4)
+                 uicb_focusnext(e->xany.display, &dc[screen], &awesomeconf[screen], NULL);
+             else if(ev->button == Button5)
+                 uicb_focusprev(e->xany.display, &dc[screen], &awesomeconf[screen], NULL);
+diff --git a/statusbar.c b/statusbar.c
+index 537ea9a..c7a422f 100644
+--- a/statusbar.c
++++ b/statusbar.c
+@@ -30,51 +30,77 @@
+ 
+ extern Client *clients, *sel;   /* global client list */
+ 
+-/** Check if at least a client is tagged with tag number t and is on screen
+- * screen
+- * \param t tag number
+- * \param screen screen number
+- * \return True or False
+- */
+-static Bool
+-isoccupied(unsigned int t, int screen)
++typedef struct
++{
++    char *label;
++    const char *command;
++} Launcher;
++
++static char launcher_start_label[] = "Start";
++
++/* Add future applications here; drawing and hit-testing share this table. */
++static const Launcher launchers[] =
++{
++    { launcher_start_label, "exec /opt/x11/usr/bin/exmenu" }
++};
++
++static int
++launcher_width(Display *disp, DC *drawcontext, const Launcher *launcher)
++{
++    return textwidth(disp, drawcontext->font, launcher->label,
++                     a_strlen(launcher->label))
++        + drawcontext->font->ascent + drawcontext->font->descent;
++}
++
++static void
++drawlaunchers(Display *disp, DC *drawcontext, awesome_config *awesomeconf)
+ {
+-    Client *c;
++    unsigned int i;
+ 
+-    for(c = clients; c; c = c->next)
+-        if(c->tags[t] && c->screen == screen)
++    for(i = 0; i < sizeof(launchers) / sizeof(launchers[0]); i++)
++    {
++        drawcontext->w = launcher_width(disp, drawcontext, &launchers[i]);
++        drawtext(disp, awesomeconf->phys_screen, drawcontext,
++                 awesomeconf->statusbar.drawable, launchers[i].label,
++                 drawcontext->norm, drawcontext->text_normal);
++        drawbevel(disp, *drawcontext, awesomeconf->statusbar.drawable,
++                  False);
++        drawcontext->x += drawcontext->w;
++    }
++}
++
++Bool
++statusbar_launcher_click(Display *disp, DC *drawcontext,
++                         awesome_config *awesomeconf, int start_x,
++                         int click_x, unsigned int button)
++{
++    unsigned int i;
++    int x = start_x;
++
++    for(i = 0; i < sizeof(launchers) / sizeof(launchers[0]); i++)
++    {
++        x += launcher_width(disp, drawcontext, &launchers[i]);
++        if(click_x < x)
++        {
++            if(button == Button1)
++                uicb_spawn(disp, drawcontext, awesomeconf,
++                           launchers[i].command);
+             return True;
++        }
++    }
+     return False;
+ }
+ 
+ void
+ drawstatusbar(Display *disp, DC *drawcontext, awesome_config * awesomeconf)
+ {
+-    int x, i;
++    int x;
+     ScreenInfo *si = get_screen_info(disp, awesomeconf->screen, NULL);
+ 
+     drawcontext->x = drawcontext->y = 0;
+-    for(i = 0; i < awesomeconf->ntags; i++)
+-    {
+-        drawcontext->w = textwidth(disp, drawcontext->font, awesomeconf->tags[i].name, a_strlen(awesomeconf->tags[i].name)) + drawcontext->font->height;
+-        if(awesomeconf->tags[i].selected)
+-        {
+-            drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, awesomeconf->tags[i].name, drawcontext->sel, drawcontext->text_selected);
+-            if(isoccupied(i, awesomeconf->screen))
+-                drawsquare(disp, *drawcontext, awesomeconf->statusbar.drawable, sel && sel->tags[i], drawcontext->sel[ColFG]);
+-        }
+-        else
+-        {
+-            drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, awesomeconf->tags[i].name, drawcontext->norm, drawcontext->text_normal);
+-            if(isoccupied(i, awesomeconf->screen))
+-                drawsquare(disp, *drawcontext, awesomeconf->statusbar.drawable, sel && sel->tags[i], drawcontext->norm[ColFG]);
+-        }
+-        drawcontext->x += drawcontext->w;
+-    }
+-    drawcontext->w = awesomeconf->statusbar.width;
+-    drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, awesomeconf->current_layout->symbol, drawcontext->norm, drawcontext->text_normal);
+-    x = drawcontext->x + drawcontext->w;
+-    drawcontext->w = textwidth(disp, drawcontext->font, awesomeconf->statustext, a_strlen(awesomeconf->statustext)) + drawcontext->font->height;
++    drawlaunchers(disp, drawcontext, awesomeconf);
++    x = drawcontext->x;
++    drawcontext->w = textwidth(disp, drawcontext->font, awesomeconf->statustext, a_strlen(awesomeconf->statustext)) + drawcontext->font->ascent + drawcontext->font->descent;
+     drawcontext->x = si[awesomeconf->screen].width - drawcontext->w;
+     if(drawcontext->x < x)
+     {
+@@ -82,6 +108,7 @@ drawstatusbar(Display *disp, DC *drawcontext, awesome_config * awesomeconf)
+         drawcontext->w = si[awesomeconf->screen].width - x;
+     }
+     drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, awesomeconf->statustext, drawcontext->norm, drawcontext->text_normal);
++    drawbevel(disp, *drawcontext, awesomeconf->statusbar.drawable, True);
+     if((drawcontext->w = drawcontext->x - x) > awesomeconf->statusbar.height)
+     {
+         drawcontext->x = x;
+@@ -90,17 +117,16 @@ drawstatusbar(Display *disp, DC *drawcontext, awesome_config * awesomeconf)
+             drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, sel->name, drawcontext->sel, drawcontext->text_selected);
+             if(sel->isfloating)
+                 drawsquare(disp, *drawcontext, awesomeconf->statusbar.drawable, sel->ismax, drawcontext->sel[ColFG]);
+-        }
+-        else if(IS_ARRANGE(layout_tile) || IS_ARRANGE(layout_tileleft))
+-        {
+-            char buf[256];
+-            snprintf(buf, sizeof(buf), "nmaster: %d ncols: %d mwfact: %.2lf", awesomeconf->nmaster, awesomeconf->ncols, awesomeconf->mwfact);
+-            drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, buf, drawcontext->norm, drawcontext->text_normal);
++            drawbevel(disp, *drawcontext,
++                      awesomeconf->statusbar.drawable, True);
+         }
+         else
+-            drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, NULL, drawcontext->norm, drawcontext->text_normal);
++            drawtext(disp, awesomeconf->phys_screen, drawcontext,
++                     awesomeconf->statusbar.drawable, "Desktop",
++                     drawcontext->norm, drawcontext->text_normal);
+     }
+     XCopyArea(disp, awesomeconf->statusbar.drawable, awesomeconf->statusbar.window, drawcontext->gc, 0, 0, si[awesomeconf->screen].width, awesomeconf->statusbar.height, 0, 0);
++    XFree(si);
+     XSync(disp, False);
+ }
+ 
+@@ -134,6 +160,7 @@ initstatusbar(Display *disp, int screen, DC *drawcontext, Statusbar *statusbar)
+                                         si[screen].width,
+                                         statusbar->height,
+                                         DefaultDepth(disp, phys_screen));
++    XFree(si);
+ }
+ 
+ void
+@@ -148,7 +175,9 @@ updatebarpos(Display *disp, Statusbar statusbar)
+         XMoveWindow(disp, statusbar.window, si[statusbar.screen].x_org, si[statusbar.screen].y_org);
+         break;
+       case BarBot:
+-        XMoveWindow(disp, statusbar.window, si[statusbar.screen].x_org, si[statusbar.screen].height - statusbar.height);
++        XMoveWindow(disp, statusbar.window, si[statusbar.screen].x_org,
++                    si[statusbar.screen].y_org +
++                    si[statusbar.screen].height - statusbar.height);
+         break;
+       case BarOff:
+         XMoveWindow(disp, statusbar.window, si[statusbar.screen].x_org, si[statusbar.screen].y_org - statusbar.height);
+@@ -165,11 +194,10 @@ uicb_togglebar(Display *disp,
+                awesome_config *awesomeconf,
+                const char *arg __attribute__ ((unused)))
+ {
+-    if(awesomeconf->statusbar.position == BarOff)
+-        awesomeconf->statusbar.position = (awesomeconf->statusbar.position == BarOff) ? BarTop : awesomeconf->statusbar_default_position;
++	if(awesomeconf->statusbar.position == BarOff)
++		awesomeconf->statusbar.position = awesomeconf->statusbar_default_position;
+     else
+         awesomeconf->statusbar.position = BarOff;
+     updatebarpos(disp, awesomeconf->statusbar);
+     arrange(disp, drawcontext, awesomeconf);
+ }
+-
+diff --git a/statusbar.h b/statusbar.h
+index ce1e9ce..a638a3d 100644
+--- a/statusbar.h
++++ b/statusbar.h
+@@ -27,6 +27,8 @@
+ void initstatusbar(Display *, int, DC *, Statusbar *);
+ void drawstatusbar(Display *, DC *, awesome_config *);
+ void updatebarpos(Display *, Statusbar);
++Bool statusbar_launcher_click(Display *, DC *, awesome_config *, int, int,
++                              unsigned int);
+ 
+ UICB_PROTO(uicb_togglebar);
+ 

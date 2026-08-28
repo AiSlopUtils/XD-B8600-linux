@@ -1,0 +1,44 @@
+#!/bin/sh
+
+mouse_pid=
+wm_pid=
+
+cleanup()
+{
+	if [ -n "$wm_pid" ]; then
+		kill "$wm_pid" 2>/dev/null || true
+		wait "$wm_pid" 2>/dev/null || true
+		wm_pid=
+	fi
+	if [ -n "$mouse_pid" ]; then
+		kill "$mouse_pid" 2>/dev/null || true
+		wait "$mouse_pid" 2>/dev/null || true
+		mouse_pid=
+	fi
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# musl's posix_openpt opens /dev/ptmx.  devtmpfs normally supplies it, but
+# retain the standard devpts symlink fallback for this tiny initramfs.
+if [ ! -e /dev/ptmx ] && [ -c /dev/pts/ptmx ]; then
+	ln -s pts/ptmx /dev/ptmx 2>/dev/null || true
+fi
+
+# startx invokes this only after the X socket exists.  Keep the MMIO/XTEST
+# helper under supervision so every X shutdown restores the pad hardware and
+# releases its lock before another startx can run.
+if [ -x /opt/x11/usr/bin/subpad-mouse ]; then
+	/opt/x11/usr/bin/subpad-mouse > /tmp/subpad-mouse.log 2>&1 &
+	mouse_pid=$!
+fi
+
+/opt/x11/usr/bin/awesome "$@" &
+wm_pid=$!
+wait "$wm_pid"
+result=$?
+wm_pid=
+exit "$result"

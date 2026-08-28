@@ -6,9 +6,11 @@ Renesas SH7724/SH-4A, big-endian, 16 MiB RAM, and a 528x320 RGB565 main LCD.
 > [!CAUTION]
 > This is hardware-specific research software. It has only been developed on
 > an XD-B8600. Do not assume that addresses, clocks, displays, or storage are
-> compatible with another EX-word model. The current recovery payload keeps
-> removable storage deliberately unbound. Boot with the SD card removed and
-> do not manually bind the SDHI driver or run `sdswap prepare erase`.
+> compatible with another EX-word model. The userspace secondary-display and
+> touch-pad helpers access XD-B8600 MMIO directly and must not be run anywhere
+> else. The current recovery payload keeps removable storage deliberately
+> unbound. Boot with the SD card removed and do not manually bind the SDHI
+> driver or run `sdswap prepare erase`.
 
 ## Current status (2026-08-28)
 
@@ -18,19 +20,28 @@ Confirmed on hardware:
 - Main 528x320 framebuffer and accelerated console scrolling.
 - EX-word keyboard input, a software Ctrl key, and keypad-driven pointer.
 - BusyBox shell and low-memory utilities.
-- X.Org Xfbdev and `twm`.
+- X.Org Xfbdev and a patched AwesomeWM 1.3 desktop.
+- The secondary 244x99 LCD draws a six-button mouse pad; its resistive panel
+  provides left/up/right, left-click/down/right-click inside X.
 
-Integrated in the latest recovery candidate:
+Integrated in the working v9 source build:
 
 - `xterm`, `screenfetch`, BusyBox `fdisk`, `blkid`, `blockdev`, `partprobe`,
   and a small `lsblk` implementation.
+- One low-memory desktop, a Windows 2000-style bottom bar with a single Start
+  button, and the `exdesk` Start menu/file-manager/clock/eyes suite.
+- A one-instance `xterm` wrapper that prevents repeated launches from
+  exhausting the 16 MiB system.
 - A guarded SD swap helper. It performs no write unless the exact command
   `sdswap prepare erase` is used.
 - Read-only `sdhwinfo` diagnostics.
 
-The latest candidate was uploaded and read back byte-for-byte over USB. Its
-post-SDHI-fix boot had not yet been confirmed when this repository was
-archived. The secondary keyboard display is unsupported and disabled.
+The v9 payload was uploaded and read back byte-for-byte over USB. Its display,
+touch, AwesomeWM, and xterm components were exercised during development; the
+final combined app-suite revision had not yet completed a fresh boot test when
+this source snapshot was committed. The checked-in files under `artifacts/`
+remain a separate hash-verified recovery/reference set; use `make all` when
+you want a fresh payload containing the v9 desktop.
 
 ## Clean-clone quick start
 
@@ -47,11 +58,13 @@ make payload      # rebuild Linux using supplied BusyBox and X image
 JOBS=4 make all   # complete pinned payload and loader build
 ```
 
-`make all` produces `build/LINUX-from-source.PAY` and installable LNX03
-packages under `build/exword-data`. It downloads checksum/revision-pinned
-upstream inputs and needs Docker, internet access, and about 10 GiB of free
-space. The host USB client has small native Homebrew or Debian dependencies.
-See [docs/BUILDING.md](docs/BUILDING.md) for setup and
+`make x11` builds the complete v9 GUI image. `make all` combines it with a
+source-built kernel and BusyBox as `build/LINUX-from-source.PAY` and also
+creates installable LNX03 packages under `build/exword-data`. The build
+downloads checksum/revision-pinned upstream inputs and needs Docker, internet
+access, and about 10 GiB of free space. The host USB client has small native
+Homebrew or Debian dependencies. See
+[docs/BUILDING.md](docs/BUILDING.md) for setup and
 [docs/INSTALLING.md](docs/INSTALLING.md) for safe device installation.
 
 ## Why SD support is disabled
@@ -116,15 +129,24 @@ Console key map:
 | Power | Toggle pointer mode |
 
 In pointer mode, arrows move the cursor and Enter/Zoom/Back click the
-left/middle/right mouse buttons. Type `startx` to start Xfbdev and twm. Quit
-from the twm root menu or turn pointer mode off and press Back+Q.
+left/middle/right mouse buttons. Type `startx` to start Xfbdev and AwesomeWM.
+The bottom-left Start button opens every installed GUI program. The secondary
+pad is drawn as six regions: left/up/right on its top row and
+left-click/down/right-click on its bottom row. Turn keyboard pointer mode off
+and press Back+Q to leave X.
+
+Only one xterm can be open at a time. This is intentional: multiple terminals
+can exhaust the device's 16 MiB of RAM. Close the current terminal before
+starting Command Prompt, Task Manager, System Information, or Disk
+Information from the Start menu.
 
 ## Repository layout
 
 - `kernel/overlay/` — the complete 16-file Linux 6.1 EX-word port overlay.
 - `kernel/exword_defconfig` — exact configuration used for the latest kernel.
 - `rootfs/` — exact BusyBox configuration and custom initramfs overlay.
-- `x11/` — Buildroot pin, overlay, Xfbdev patches, twm config, and packager.
+- `x11/` — Buildroot and AwesomeWM pins, Xfbdev/xterm patches, v9 desktop
+  utilities and wrappers, one-desktop configuration, and SquashFS packager.
 - `loader/` — source for the LNX03 Casio add-in payload loader.
 - `payload/` — test payloads and the EXWPAY1 packer.
 - `tools/libexword/` — pinned upstream transfer client with the local fixes.
@@ -144,9 +166,13 @@ versions, hashes, and upstream locations are recorded in
 - SD, persistent storage, swap on SD, networking, and audio are not operational.
 - The SH clock model and timer calibration remain provisional.
 - Only 16 MiB of physical RAM is available; X applications can trigger OOM.
+- The single-instance xterm policy is a memory-safety limit, not a desktop
+  configuration option.
 - `top` uses manual Space/Enter refresh because timed refresh is unreliable.
 - There is BusyBox `fdisk`, not full ncurses `cfdisk`.
-- The secondary keyboard display is disabled.
+- Secondary LCD/touch support reuses firmware-initialized hardware from a
+  root-only userspace helper. It is specific to the measured XD-B8600 and is
+  not a general kernel input/display driver.
 
 ## Memory layout
 

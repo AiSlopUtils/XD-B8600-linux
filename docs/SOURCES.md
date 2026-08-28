@@ -10,6 +10,8 @@ exact baselines used by the port.
 | musl (exact BusyBox rebuild) | 1.2.5 | `a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4` |
 | musl (Buildroot X11 toolchain) | 1.1.22 | `8b0941a48d2f980fd7036cfbd24aa1d414f03d9a0652ecbd5ec5c7ff1bee29e3` |
 | X.Org server | 1.19.7 | `7112f7128a4f5b06ceb8bba1bdc5e5c9e0fae682a42d35218bc12ba693f4c80c` |
+| xterm | 327 | `66fb2f6c35b342148f549c276b12a3aa3fb408e27ab6360ddec513e14376150b` |
+| AwesomeWM | 1.3 development head | `d4f1b99c93c7da10af774500f3c007e77a765c5d` plus the local patch under `x11/awesome` |
 | Buildroot | 2019.02.11 | `5a6d31c87e1573bc83986471c194b944d7a365b7` |
 | libexword | `2.0-dev` | `d186e356d942ea83c89480dc9d2110c1dbe520ef` plus the local changes in `tools/libexword` |
 | devkitSH4 SDK archive | GCC 8.3.0, Linux x86-64 | `1609b719e62224521243fea086ea492759fd9ee4116e1450d8b5e69fccfc7555` |
@@ -22,6 +24,8 @@ Primary upstream locations:
 - musl 1.2.5: <https://musl.libc.org/releases/musl-1.2.5.tar.gz>
 - musl 1.1.22: <https://musl.libc.org/releases/musl-1.1.22.tar.gz>
 - X.Org: <https://www.x.org/releases/individual/xserver/xorg-server-1.19.7.tar.bz2>
+- xterm: <https://invisible-mirror.net/archives/xterm/xterm-327.tgz>
+- AwesomeWM: <https://github.com/awesomeWM/awesome>
 - Buildroot: <https://gitlab.com/buildroot.org/buildroot>
 - libexword: <https://github.com/brijohn/libexword>
 - devkitSH4 SDK: <https://github.com/MaxSignal/buildscripts/releases/download/Linux/devkitPro.tar.gz>
@@ -32,6 +36,14 @@ for the exact LNX03 rebuild. The libdataplus revision above records the
 upstream source checkout inspected during development; it is not a claim that
 the archive exposes build metadata proving its embedded libraries came from
 that exact commit.
+
+`scripts/prepare-awesome.sh` clones AwesomeWM only at the revision recorded
+above, verifies the resulting commit, and then applies the source-controlled
+EX-word patch. The patch adapts the historical 1.3 code to the Buildroot
+libraries, removes the Xft dependency, and implements the one-desktop
+Windows 2000-style bar used by v9. The `exdesk`, secondary-pad, startup-gate,
+and wrapper sources are project-original files stored directly under `x11/`;
+they are not downloaded during the build.
 
 The Docker recipes currently use Ubuntu 22.04 tags. Those tags and apt
 repositories are not content-addressed inputs, so target source builds are

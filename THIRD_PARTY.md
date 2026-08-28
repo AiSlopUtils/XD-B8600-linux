@@ -11,9 +11,19 @@ not replace or weaken any third-party license listed below.
   included kernel binary.
 - BusyBox: BusyBox 1.37.0, GPL-2.0-or-later. The exact config, version, source
   hash, and unmodified upstream source location are recorded here.
-- X.Org, twm, xterm, musl, X libraries, and Buildroot packages retain their
+- X.Org, xterm, musl, X libraries, and Buildroot packages retain their
   respective upstream licenses. The exact Buildroot overlay and inputs are
-  included.
+  included. The local xterm controlling-terminal fix remains under xterm's
+  upstream permissive notices.
+- AwesomeWM 1.3 is built from commit
+  `d4f1b99c93c7da10af774500f3c007e77a765c5d` and is licensed
+  GPL-2.0-or-later by its upstream authors. The repository patch modifies
+  that GPL-covered program and does not place it under the project's 0BSD
+  license.
+- The `exdesk`, X startup gate, secondary-LCD/touch helpers, and shell
+  wrappers are project-original code under 0BSD unless an individual file
+  says otherwise. Their use of X11 libraries does not change the licenses of
+  those libraries.
 - `tools/libexword` derives from Brian Johnson's GPL-2.0-or-later libexword at
   commit `d186e35` and preserves its copyright notices.
 - Loader/experiment code depends on the separately developed devkitSH4 and

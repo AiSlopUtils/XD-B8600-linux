@@ -40,8 +40,9 @@ chmod 700 /tmp/xkb
 rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 /tmp/Xfbdev.log
 
 echo "Starting X.Org Xfbdev on VT2..."
-echo "POWER toggles mouse mode; arrows move; ENTER/ZOOM/BACK click L/M/R."
-echo "Use the root menu or switch mouse mode off and press BACK+Q to quit."
+echo "POWER toggles keypad mouse mode; arrows move; ENTER/ZOOM/BACK click L/M/R."
+echo "The secondary touch LCD provides directional and L/R mouse buttons."
+echo "Use the bottom-left Start menu; switch mouse mode off and press BACK+Q to quit."
 
 "$xbin/Xfbdev" :0 -fb /dev/fb0 vt2 \
 	-keybd evdev,,device=$keyboard_event,XkbRules=evdev,XkbModel=pc105,XkbLayout=us \

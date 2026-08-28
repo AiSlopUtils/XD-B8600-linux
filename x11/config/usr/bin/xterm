@@ -1,0 +1,49 @@
+#!/bin/sh
+
+# One terminal is the practical limit on this 16 MiB target.  The atomic
+# directory also prevents a broken or slow launch from flooding Awesome with
+# child processes.  /tmp is recreated on every boot, so the lock cannot
+# survive a reset.
+lock=/tmp/xterm.lock
+if ! mkdir "$lock" 2>/dev/null; then
+	owner=
+	[ ! -r "$lock/pid" ] || read -r owner < "$lock/pid"
+	case "$owner" in
+		''|*[!0-9]*) exit 0 ;;
+	esac
+	if kill -0 "$owner" 2>/dev/null; then
+		exit 0
+	fi
+	rm -f "$lock/pid"
+	rmdir "$lock" 2>/dev/null || exit 0
+	mkdir "$lock" 2>/dev/null || exit 0
+fi
+
+echo $$ > "$lock/pid"
+child=
+
+cleanup()
+{
+	rm -f "$lock/pid"
+	rmdir "$lock" 2>/dev/null || true
+}
+
+terminate()
+{
+	[ -z "$child" ] || kill "$child" 2>/dev/null || true
+	cleanup
+	exit 1
+}
+
+trap cleanup EXIT
+trap terminate HUP INT TERM
+
+# Keep expected X-server shutdown diagnostics off the text console.  Record a
+# bounded result instead of allowing an old xterm retry loop to fill /tmp.
+/opt/x11/usr/bin/xterm.real "$@" 2>/dev/null &
+child=$!
+echo "$child" > "$lock/pid"
+wait "$child"
+result=$?
+echo "xterm exit $result" > /tmp/xterm.log
+exit "$result"

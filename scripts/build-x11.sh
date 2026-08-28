@@ -27,6 +27,7 @@ gid=$(id -g)
 }
 
 "$repo/scripts/prepare-buildroot.sh" "$source_tree"
+"$repo/scripts/prepare-awesome.sh" "$repo/build/awesome-v1.3-src"
 
 docker build -t "$image" \
 	-f "$repo/x11/Dockerfile.buildroot-x11" "$repo/x11"
@@ -57,11 +58,17 @@ docker run --rm \
 	cp -p /work/x11/buildroot-2019-exword.defconfig "$out/.config"
 	make -C /work/build/buildroot-2019.02.11 \
 		O="$out" BR2_DL_DIR="$out/dl" olddefconfig
+	# Re-extract xterm on every invocation so the tracked PTY patch cannot be
+	# hidden by an older Buildroot cache that already installed xterm.
+	make -C /work/build/buildroot-2019.02.11 \
+		O="$out" BR2_DL_DIR="$out/dl" xterm-dirclean
 	make -C /work/build/buildroot-2019.02.11 \
 		O="$out" BR2_DL_DIR="$out/dl" -j"$1"
 	rm -rf "$out/x11-stage"
 	rm -f "$out/x11-xterm.sqfs" /work/build/x11-xterm.sqfs
-	X11_CONFIG_ROOT=/work/x11/config /work/x11/package-x11.sh \
+	X11_CONFIG_ROOT=/work/x11/config X11_SOURCE_ROOT=/work \
+	AWESOME_SOURCE=/work/build/awesome-v1.3-src \
+	/work/x11/package-x11.sh \
 		"$out/target" "$out/host" \
 		"$out/x11-stage" "$out/x11-xterm.sqfs"
 	cp -p "$out/x11-xterm.sqfs" /work/build/x11-xterm.sqfs' \

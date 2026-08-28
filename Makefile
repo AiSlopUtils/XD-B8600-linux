@@ -16,7 +16,7 @@ help:
 	@echo "  make all                 run the complete pinned payload/loader build"
 	@echo
 	@echo "Individual targets:"
-	@echo "  make x11                 build Xfbdev, twm and xterm with Buildroot"
+	@echo "  make x11                 build Xfbdev, AwesomeWM and desktop utilities"
 	@echo "  make busybox             reproduce the static big-endian BusyBox exactly"
 	@echo "  make loader              rebuild LNX03 exactly with pinned devkitSH4"
 	@echo "  make loader-package      stage the supplied LNX03 without a compiler"
