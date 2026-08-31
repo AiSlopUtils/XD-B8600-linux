@@ -45,6 +45,7 @@ struct ui {
 	unsigned long dark;
 	unsigned long navy;
 	unsigned long desktop;
+	unsigned long focus_text;
 	int width;
 	int height;
 };
@@ -75,10 +76,15 @@ struct menu_item {
 
 static const struct menu_item menu_items[] = {
 	{ "File Manager", "exec /opt/x11/usr/bin/exfile /" },
-	{ "Command Prompt", "exec /opt/x11/usr/bin/xterm -T 'Command Prompt' -tn xterm -fn fixed -bg black -fg white -cr white -geometry 64x20 -sl 64 +sb -ut" },
-	{ "Task Manager", "exec /opt/x11/usr/bin/xterm -T 'Task Manager' -tn xterm -fn fixed -bg black -fg white -cr white -geometry 64x20 -sl 16 +sb -ut -e /usr/bin/top" },
-	{ "System Information", "exec /opt/x11/usr/bin/xterm -T 'System Information' -tn xterm -fn fixed -bg black -fg white -cr white -geometry 64x20 -sl 8 +sb -ut -e /bin/sh -c '/opt/x11/usr/bin/screenfetch; echo; echo Press ENTER to close; read answer'" },
-	{ "Disk Information", "exec /opt/x11/usr/bin/xterm -T 'Disk Information' -tn xterm -fn fixed -bg black -fg white -cr white -geometry 64x20 -sl 8 +sb -ut -e /bin/sh -c '/usr/bin/lsblk; echo; echo Press ENTER to close; read answer'" },
+	{ "Calculator", "exec /opt/x11/usr/bin/xcalc" },
+	{ "Text Editor", "exec /opt/x11/usr/bin/xedit" },
+	{ "Message Box", "exec /opt/x11/usr/bin/xmessage -center 'Hello from EX-word Linux'" },
+	{ "Kill Window", "exec /opt/x11/usr/bin/xkill" },
+	{ "Command Prompt", "exec /opt/x11/usr/bin/xterm -T 'Command Prompt' -tn xterm -fn fixed -bg '#242424' -fg white -cr '#0099cc' -geometry 64x20 -sl 64 +sb -ut" },
+	{ "Task Manager", "exec /opt/x11/usr/bin/xterm -T 'Task Manager' -tn xterm -fn fixed -bg '#242424' -fg white -cr '#0099cc' -geometry 64x20 -sl 16 +sb -ut -e /usr/bin/top" },
+	{ "System Information", "exec /opt/x11/usr/bin/xterm -T 'System Information' -tn xterm -fn fixed -bg '#242424' -fg white -cr '#0099cc' -geometry 64x20 -sl 8 +sb -ut -e /bin/sh -c '/opt/x11/usr/bin/screenfetch; echo; echo Press ENTER to close; read answer'" },
+	{ "Disk Information", "exec /opt/x11/usr/bin/xterm -T 'Disk Information' -tn xterm -fn fixed -bg '#242424' -fg white -cr '#0099cc' -geometry 64x20 -sl 8 +sb -ut -e /bin/sh -c '/usr/bin/lsblk; echo; echo Press ENTER to close; read answer'" },
+	{ "Snake", "/opt/x11/usr/bin/notify 'Starting Snake'; exec /opt/x11/usr/bin/snake" },
 	{ "Clock", "exec /opt/x11/usr/bin/xclock" },
 	{ "Eyes", "exec /opt/x11/usr/bin/xeyes" },
 	{ "Close Menu", NULL },
@@ -109,12 +115,13 @@ ui_init(struct ui *ui)
 	ui->root = RootWindow(ui->display, ui->screen);
 	ui->black = BlackPixel(ui->display, ui->screen);
 	ui->white = WhitePixel(ui->display, ui->screen);
-	ui->face = named_color(ui, "#d4d0c8", ui->white);
-	ui->light = named_color(ui, "#ffffff", ui->white);
-	ui->shadow = named_color(ui, "#808080", ui->black);
-	ui->dark = named_color(ui, "#404040", ui->black);
-	ui->navy = named_color(ui, "#0a246a", ui->black);
-	ui->desktop = named_color(ui, "#3a6ea5", ui->black);
+	ui->face = named_color(ui, "#242424", ui->black);
+	ui->light = named_color(ui, "#0099cc", ui->white);
+	ui->shadow = named_color(ui, "#111111", ui->black);
+	ui->dark = named_color(ui, "#9e9e9e", ui->white);
+	ui->navy = named_color(ui, "#303030", ui->black);
+	ui->desktop = named_color(ui, "#222222", ui->black);
+	ui->focus_text = named_color(ui, "#4cb7db", ui->white);
 	ui->font = XLoadQueryFont(ui->display, "fixed");
 	if (ui->font == NULL) {
 		fputs("exdesk: fixed font is unavailable\n", stderr);
@@ -165,13 +172,15 @@ make_window(struct ui *ui, const char *title, int width, int height,
 	memset(&attributes, 0, sizeof(attributes));
 	attributes.override_redirect = menu ? True : False;
 	attributes.background_pixel = ui->face;
+	attributes.border_pixel = ui->light;
 	attributes.event_mask = ExposureMask | ButtonPressMask | KeyPressMask |
 		                      PointerMotionMask | StructureNotifyMask;
 	attributes.event_mask |= VisibilityChangeMask;
 	ui->window = XCreateWindow(ui->display, ui->root, x, y,
 	                           (unsigned int)width, (unsigned int)height, 1,
 	                           CopyFromParent, InputOutput, CopyFromParent,
-	                           CWOverrideRedirect | CWBackPixel | CWEventMask,
+	                           CWOverrideRedirect | CWBackPixel | CWBorderPixel |
+	                           CWEventMask,
 	                           &attributes);
 	XStoreName(ui->display, ui->window, title);
 	class_hint.res_name = (char *)title;
@@ -210,19 +219,12 @@ static void
 bevel(struct ui *ui, Drawable drawable, int x, int y,
 	int width, int height, bool sunken)
 {
-	unsigned long upper = sunken ? ui->shadow : ui->light;
-	unsigned long lower = sunken ? ui->light : ui->shadow;
-
 	if (width < 2 || height < 2)
 		return;
-	XSetForeground(ui->display, ui->gc, upper);
-	XDrawLine(ui->display, drawable, ui->gc, x, y, x + width - 1, y);
-	XDrawLine(ui->display, drawable, ui->gc, x, y, x, y + height - 1);
-	XSetForeground(ui->display, ui->gc, lower);
-	XDrawLine(ui->display, drawable, ui->gc,
-	          x, y + height - 1, x + width - 1, y + height - 1);
-	XDrawLine(ui->display, drawable, ui->gc,
-	          x + width - 1, y, x + width - 1, y + height - 1);
+	XSetForeground(ui->display, ui->gc, sunken ? ui->light : ui->shadow);
+	XDrawRectangle(ui->display, drawable, ui->gc, x, y,
+	               (unsigned int)(width - 1),
+	               (unsigned int)(height - 1));
 }
 
 static void
@@ -252,7 +254,7 @@ button(struct ui *ui, Drawable drawable, int x, int y,
 
 	fill(ui, drawable, pressed ? ui->navy : ui->face, x, y, width, height);
 	bevel(ui, drawable, x, y, width, height, pressed);
-	text(ui, drawable, pressed ? ui->white : ui->black,
+	text(ui, drawable, pressed ? ui->focus_text : ui->white,
 	     x + (width - text_width) / 2, baseline, label);
 }
 
@@ -321,7 +323,7 @@ spawn_viewer(struct ui *ui, const char *path)
 		(void)setsid();
 		execl("/opt/x11/usr/bin/xterm", "xterm",
 		      "-T", "File Viewer", "-tn", "xterm", "-fn", "fixed",
-		      "-bg", "black", "-fg", "white", "-cr", "white",
+		      "-bg", "#242424", "-fg", "white", "-cr", "#0099cc",
 		      "-geometry", "64x20", "-sl", "32", "+sb", "-ut",
 		      "-e", "/bin/sh", "-c",
 		      "/usr/bin/head -n 200 \"$1\"; echo; "
@@ -336,11 +338,10 @@ static int
 menu_index_at(int x, int y, int width)
 {
 	const int top = 4;
-	const int side = 28;
-	const int row = 26;
+	const int row = 22;
 	int index;
 
-	if (x < side || x >= width - 4 || y < top)
+	if (x < 4 || x >= width - 4 || y < top)
 		return -1;
 	index = (y - top) / row;
 	if (index < 0 || index >= (int)(sizeof(menu_items) / sizeof(menu_items[0])))
@@ -352,24 +353,20 @@ static void
 draw_menu(struct ui *ui, int hover)
 {
 	const int top = 4;
-	const int side = 28;
-	const int row = 26;
+	const int row = 22;
 	int index;
 
 	fill(ui, ui->window, ui->face, 0, 0, ui->width, ui->height);
 	bevel(ui, ui->window, 0, 0, ui->width, ui->height, false);
-	fill(ui, ui->window, ui->navy, 3, 3, side - 5, ui->height - 6);
-	text(ui, ui->window, ui->white, 8, ui->height - 12, "EX");
-	text(ui, ui->window, ui->white, 8, ui->height - 28, "2000");
 	for (index = 0;
 	     index < (int)(sizeof(menu_items) / sizeof(menu_items[0]));
 	     index++) {
 		int y = top + index * row;
 		bool selected = index == hover;
 		fill(ui, ui->window, selected ? ui->navy : ui->face,
-		     side, y, ui->width - side - 4, row);
-		text(ui, ui->window, selected ? ui->white : ui->black,
-		     side + 8, y + 18, menu_items[index].label);
+		     4, y, ui->width - 8, row);
+		text(ui, ui->window, selected ? ui->focus_text : ui->white,
+		     12, y + 15, menu_items[index].label);
 	}
 	XFlush(ui->display);
 }
@@ -379,8 +376,8 @@ run_menu(void)
 {
 	struct ui ui;
 	XEvent event;
-	const int width = 218;
-	const int height = 8 * 26 + 8;
+	const int width = 190;
+	const int height = (int)(sizeof(menu_items) / sizeof(menu_items[0])) * 22 + 8;
 	int hover = 0;
 	int lock_fd = instance_lock("menu");
 	const char *command = NULL;
@@ -391,7 +388,7 @@ run_menu(void)
 		close(lock_fd);
 		return 1;
 	}
-	make_window(&ui, "Start", width, height, true, true);
+	make_window(&ui, "Holo Menu", width, height, true, true);
 	XSync(ui.display, False);
 	if (XGrabPointer(ui.display, ui.window, False,
 	                 ButtonPressMask | PointerMotionMask,
@@ -612,8 +609,9 @@ draw_file_manager(struct ui *ui, const struct file_state *state)
 
 	fill(ui, ui->window, ui->face, 0, 0, ui->width, ui->height);
 	fill(ui, ui->window, ui->navy, 2, 2, ui->width - 4, 21);
+	fill(ui, ui->window, ui->light, 2, 22, ui->width - 4, 1);
 	snprintf(title, sizeof(title), "EX-File  %s", state->path);
-	text_n(ui, ui->window, ui->white, 7, 17, title,
+	text_n(ui, ui->window, ui->focus_text, 7, 17, title,
 	       (int)strnlen(title, (size_t)((ui->width - 14) / 6)));
 	button(ui, ui->window, 4, 27, 48, 22, "Up", false);
 	button(ui, ui->window, 56, 27, 48, 22, "Root", false);
@@ -621,7 +619,7 @@ draw_file_manager(struct ui *ui, const struct file_state *state)
 	button(ui, ui->window, 160, 27, 62, 22, "Refresh", false);
 	button(ui, ui->window, ui->width - 56, 27, 52, 22, "Close", false);
 
-	fill(ui, ui->window, ui->white, 4, FILE_LIST_TOP - 2,
+	fill(ui, ui->window, ui->desktop, 4, FILE_LIST_TOP - 2,
 	     ui->width - 8, rows * FILE_ROW_HEIGHT + 4);
 	bevel(ui, ui->window, 3, FILE_LIST_TOP - 3,
 	      ui->width - 6, rows * FILE_ROW_HEIGHT + 6, true);
@@ -644,7 +642,7 @@ draw_file_manager(struct ui *ui, const struct file_state *state)
 			fill(ui, ui->window, ui->navy, 6, y,
 			     ui->width - 12, FILE_ROW_HEIGHT);
 		text_n(ui, ui->window,
-		       index == state->selected ? ui->white : ui->black,
+		       index == state->selected ? ui->focus_text : ui->white,
 		       9, y + 12, line,
 		       (int)strnlen(line, (size_t)max_chars));
 	}
@@ -783,13 +781,13 @@ seven_segment(struct ui *ui, int x, int y, int digit)
 	const int height = 38;
 	const int thick = 3;
 
-	if (bits & 0x01) fill(ui, ui->window, ui->black, x + 3, y, width - 6, thick);
-	if (bits & 0x02) fill(ui, ui->window, ui->black, x + width - thick, y + 3, thick, height / 2 - 4);
-	if (bits & 0x04) fill(ui, ui->window, ui->black, x + width - thick, y + height / 2 + 1, thick, height / 2 - 4);
-	if (bits & 0x08) fill(ui, ui->window, ui->black, x + 3, y + height - thick, width - 6, thick);
-	if (bits & 0x10) fill(ui, ui->window, ui->black, x, y + height / 2 + 1, thick, height / 2 - 4);
-	if (bits & 0x20) fill(ui, ui->window, ui->black, x, y + 3, thick, height / 2 - 4);
-	if (bits & 0x40) fill(ui, ui->window, ui->black, x + 3, y + height / 2 - 1, width - 6, thick);
+	if (bits & 0x01) fill(ui, ui->window, ui->light, x + 3, y, width - 6, thick);
+	if (bits & 0x02) fill(ui, ui->window, ui->light, x + width - thick, y + 3, thick, height / 2 - 4);
+	if (bits & 0x04) fill(ui, ui->window, ui->light, x + width - thick, y + height / 2 + 1, thick, height / 2 - 4);
+	if (bits & 0x08) fill(ui, ui->window, ui->light, x + 3, y + height - thick, width - 6, thick);
+	if (bits & 0x10) fill(ui, ui->window, ui->light, x, y + height / 2 + 1, thick, height / 2 - 4);
+	if (bits & 0x20) fill(ui, ui->window, ui->light, x, y + 3, thick, height / 2 - 4);
+	if (bits & 0x40) fill(ui, ui->window, ui->light, x + 3, y + height / 2 - 1, width - 6, thick);
 }
 
 static void
@@ -812,13 +810,14 @@ draw_clock(struct ui *ui)
 	values[5] = local->tm_sec % 10;
 	fill(ui, ui->window, ui->face, 0, 0, ui->width, ui->height);
 	fill(ui, ui->window, ui->navy, 2, 2, ui->width - 4, 20);
-	text(ui, ui->window, ui->white, 7, 16, "Clock");
+	fill(ui, ui->window, ui->light, 2, 22, ui->width - 4, 1);
+	text(ui, ui->window, ui->focus_text, 7, 16, "Clock");
 	for (index = 0; index < 6; index++) {
 		seven_segment(ui, x, 30, values[index]);
 		x += 25;
 		if (index == 1 || index == 3) {
-			fill(ui, ui->window, ui->black, x, 40, 3, 3);
-			fill(ui, ui->window, ui->black, x, 53, 3, 3);
+			fill(ui, ui->window, ui->light, x, 40, 3, 3);
+			fill(ui, ui->window, ui->light, x, 53, 3, 3);
 			x += 10;
 		}
 	}
@@ -880,7 +879,8 @@ draw_eyes(struct ui *ui, bool force)
 	previous_valid = true;
 	fill(ui, ui->window, ui->face, 0, 0, ui->width, ui->height);
 	fill(ui, ui->window, ui->navy, 2, 2, ui->width - 4, 20);
-	text(ui, ui->window, ui->white, 7, 16, "xeyes");
+	fill(ui, ui->window, ui->light, 2, 22, ui->width - 4, 1);
+	text(ui, ui->window, ui->focus_text, 7, 16, "xeyes");
 	for (eye = 0; eye < 2; eye++) {
 		int center_x = eye == 0 ? 53 : 127;
 		int center_y = 61;

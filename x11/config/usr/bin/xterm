@@ -40,7 +40,9 @@ trap terminate HUP INT TERM
 
 # Keep expected X-server shutdown diagnostics off the text console.  Record a
 # bounded result instead of allowing an old xterm retry loop to fill /tmp.
-/opt/x11/usr/bin/xterm.real "$@" 2>/dev/null &
+/opt/x11/usr/bin/xterm.real \
+	-fn fixed -bg '#242424' -fg white -cr '#0099cc' \
+	-sl 64 +sb -ut "$@" 2>/dev/null &
 child=$!
 echo "$child" > "$lock/pid"
 wait "$child"

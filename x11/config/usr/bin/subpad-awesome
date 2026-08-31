@@ -36,7 +36,10 @@ if [ -x /opt/x11/usr/bin/subpad-mouse ]; then
 	mouse_pid=$!
 fi
 
-/opt/x11/usr/bin/awesome "$@" &
+# A direct pipe works with the verified minimal BusyBox and needs no mkfifo
+# applet.  When Awesome exits, holostatus sees SIGPIPE on its next update and
+# exits; $! is the final command in the background pipeline (Awesome itself).
+/opt/x11/usr/bin/holostatus | /opt/x11/usr/bin/awesome "$@" &
 wm_pid=$!
 wait "$wm_pid"
 result=$?

@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+
+parameter=/sys/module/exword_keypad/parameters/subpad_mode
+
+if [ ! -e "$parameter" ]; then
+	echo "subpad: kernel control is unavailable: $parameter" >&2
+	exit 1
+fi
+
+case "${1:-status}" in
+	status)
+		mode=$(cat "$parameter") || exit 1
+		case "$mode" in
+			0) name=off ;;
+			1) name=lcd ;;
+			2) name=touch ;;
+			3) name=both ;;
+			4) name=pen ;;
+			*) name=diagnostic ;;
+		esac
+		echo "subpad mode: $mode ($name)"
+		;;
+	off)
+		echo 0 > "$parameter"
+		echo "subpad: secondary hardware disabled"
+		;;
+	lcd)
+		echo 1 > "$parameter"
+		echo "subpad: LCD-only test requested; reboot if the device freezes"
+		;;
+	touch)
+		echo 2 > "$parameter"
+		echo "subpad: ADC-touch-only test requested; reboot if it freezes"
+		;;
+	both)
+		echo 3 > "$parameter"
+		echo "subpad: LCD and touch requested"
+		;;
+	pen)
+		echo 4 > "$parameter"
+		echo "subpad: one-shot pen-GPIO test requested; ADC remains off"
+		;;
+	*)
+		echo "usage: subpad [status|off|lcd|pen|touch|both]" >&2
+		exit 2
+		;;
+esac

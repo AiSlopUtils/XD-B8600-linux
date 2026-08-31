@@ -1,44 +1,190 @@
 diff --git a/awesome.c b/awesome.c
-index c728830..4b59aa0 100644
+index c728830..5166c09 100644
 --- a/awesome.c
 +++ b/awesome.c
-@@ -67,7 +67,7 @@ cleanup(DC *drawcontext, awesome_config *awesomeconf)
+@@ -20,10 +20,14 @@
+  */
+ 
+ #include <errno.h>
++#include <fcntl.h>
+ #include <locale.h>
++#include <stdint.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <unistd.h>
+ #include <sys/select.h>
++#include <sys/stat.h>
+ #include <X11/cursorfont.h>
+ #include <X11/keysym.h>
+ #include <X11/Xatom.h>
+@@ -48,6 +52,111 @@ DC *dc;
+ static int (*xerrorxlib) (Display *, XErrorEvent *);
+ static Bool readin = True, running = True;
+ 
++#define HOLO_WALLPAPER "/opt/x11/usr/share/awesome/holo-wallpaper-528x320.rgb565"
++#define HOLO_WIDTH 528
++#define HOLO_HEIGHT 320
++#define HOLO_STRIP_HEIGHT 32
++
++static Bool
++read_exact(int fd, unsigned char *buffer, size_t length)
++{
++    while(length > 0)
++    {
++        ssize_t count = read(fd, buffer, length);
++
++        if(count < 0 && errno == EINTR)
++            continue;
++        if(count <= 0)
++            return False;
++        buffer += count;
++        length -= (size_t) count;
++    }
++    return True;
++}
++
++/* Install the Holo background without a PNG decoder or wallpaper process.
++ * Keeping only a 32-row client buffer limits temporary RAM to 33 KiB; the
++ * completed 330 KiB image lives in the X server as the root pixmap. */
++static Bool
++install_holo_wallpaper(awesome_config *awesomeconf)
++{
++    Display *disp = awesomeconf->display;
++    int screen = awesomeconf->phys_screen;
++    int depth = DefaultDepth(disp, screen);
++    Visual *visual = DefaultVisual(disp, screen);
++    Window root = RootWindow(disp, screen);
++    const size_t strip_size = HOLO_WIDTH * HOLO_STRIP_HEIGHT * 2;
++    const off_t wallpaper_size = HOLO_WIDTH * HOLO_HEIGHT * 2;
++    unsigned char *pixels = NULL;
++    XImage *image = NULL;
++    Pixmap pixmap = None;
++    GC gc = None;
++    struct stat status;
++    Bool installed = False;
++    int fd = -1;
++    int y;
++
++    if(DisplayWidth(disp, screen) != HOLO_WIDTH ||
++       DisplayHeight(disp, screen) != HOLO_HEIGHT || depth != 16 ||
++       visual->red_mask != 0xf800 || visual->green_mask != 0x07e0 ||
++       visual->blue_mask != 0x001f)
++        goto out;
++
++    fd = open(HOLO_WALLPAPER, O_RDONLY);
++    if(fd < 0 || fstat(fd, &status) < 0 ||
++       !S_ISREG(status.st_mode) || status.st_size != wallpaper_size)
++        goto out;
++
++    pixels = malloc(strip_size);
++    if(!pixels)
++        goto out;
++    image = XCreateImage(disp, visual, depth, ZPixmap, 0,
++                         (char *) pixels, HOLO_WIDTH,
++                         HOLO_STRIP_HEIGHT, 16, HOLO_WIDTH * 2);
++    if(!image || image->bits_per_pixel != 16 ||
++       image->bytes_per_line != HOLO_WIDTH * 2 ||
++       image->byte_order != MSBFirst)
++        goto out;
++
++    pixmap = XCreatePixmap(disp, root, HOLO_WIDTH, HOLO_HEIGHT, depth);
++    if(pixmap == None)
++        goto out;
++    gc = XCreateGC(disp, pixmap, 0, NULL);
++    if(gc == None)
++        goto out;
++
++    for(y = 0; y < HOLO_HEIGHT; y += HOLO_STRIP_HEIGHT)
++    {
++        if(!read_exact(fd, pixels, strip_size))
++            goto out;
++        XPutImage(disp, pixmap, gc, image, 0, 0, 0, y,
++                  HOLO_WIDTH, HOLO_STRIP_HEIGHT);
++    }
++
++    XSetWindowBackgroundPixmap(disp, root, pixmap);
++    XClearWindow(disp, root);
++    awesomeconf->desktop_pixmap = pixmap;
++    pixmap = None;
++    installed = True;
++
++out:
++    if(fd >= 0)
++        (void) posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
++    if(gc != None)
++        XFreeGC(disp, gc);
++    if(pixmap != None)
++        XFreePixmap(disp, pixmap);
++    if(image)
++    {
++        image->data = NULL;
++        XDestroyImage(image);
++    }
++    free(pixels);
++    if(fd >= 0)
++        close(fd);
++    return installed;
++}
++
+ /** Cleanup everything on quit
+  * \param drawcontext Drawcontext ref
+  * \param awesomeconf awesome config
+@@ -67,7 +176,19 @@ cleanup(DC *drawcontext, awesome_config *awesomeconf)
  
      for(screen = 0; screen < get_screen_count(awesomeconf->display); screen++)
      {
 -        XftFontClose(awesomeconf->display, drawcontext->font);
-+        XFreeFont(awesomeconf->display, drawcontext->font);
++        Window root = RootWindow(awesomeconf->display,
++                                 awesomeconf[screen].phys_screen);
++
++        if(awesomeconf[screen].desktop_pixmap != None)
++        {
++            XSetWindowBackground(awesomeconf->display, root,
++                                 awesomeconf[screen].desktop_bg);
++            XClearWindow(awesomeconf->display, root);
++            XFreePixmap(awesomeconf->display,
++                        awesomeconf[screen].desktop_pixmap);
++        }
++
++        XFreeFont(awesomeconf->display, drawcontext[screen].font);
  
          XUngrabKey(awesomeconf->display, AnyKey, AnyModifier, RootWindow(awesomeconf->display, awesomeconf[screen].phys_screen));
  
-@@ -196,6 +196,15 @@ setup(DC *drawcontext, awesome_config *awesomeconf)
+@@ -196,6 +317,18 @@ setup(DC *drawcontext, awesome_config *awesomeconf)
  
      XChangeWindowAttributes(awesomeconf->display, RootWindow(awesomeconf->display, awesomeconf->phys_screen), CWEventMask | CWCursor, &wa);
  
-+    /* A solid server-side desktop costs no wallpaper process or pixmap. */
-+    XSetWindowBackground(awesomeconf->display,
-+                         RootWindow(awesomeconf->display,
-+                                    awesomeconf->phys_screen),
-+                         awesomeconf->desktop_bg);
-+    XClearWindow(awesomeconf->display,
-+                 RootWindow(awesomeconf->display,
-+                            awesomeconf->phys_screen));
++    if(!install_holo_wallpaper(awesomeconf))
++    {
++        XSetWindowBackground(awesomeconf->display,
++                             RootWindow(awesomeconf->display,
++                                        awesomeconf->phys_screen),
++                             awesomeconf->desktop_bg);
++        XClearWindow(awesomeconf->display,
++                     RootWindow(awesomeconf->display,
++                                awesomeconf->phys_screen));
++        fprintf(stderr, "awesome: Holo wallpaper unavailable; using solid background\n");
++    }
 +
      XSelectInput(awesomeconf->display, RootWindow(awesomeconf->display, awesomeconf->phys_screen), wa.event_mask);
  
      grabkeys(awesomeconf->display, awesomeconf->phys_screen, awesomeconf);
-@@ -203,7 +212,9 @@ setup(DC *drawcontext, awesome_config *awesomeconf)
+@@ -203,9 +336,13 @@ setup(DC *drawcontext, awesome_config *awesomeconf)
      compileregs(awesomeconf->rules, awesomeconf->nrules);
  
      /* bar */
 -    drawcontext->h = awesomeconf->statusbar.height = drawcontext->font->height + 2;
-+    /* Slightly taller than stock for the Windows 2000 taskbar look. */
++    /* Keep the single Holo bar compact on the 320-line display. */
 +    drawcontext->h = awesomeconf->statusbar.height =
 +        drawcontext->font->ascent + drawcontext->font->descent + 6;
      initstatusbar(awesomeconf->display, awesomeconf->screen, drawcontext, &awesomeconf->statusbar);
      drawcontext->gc = XCreateGC(awesomeconf->display, RootWindow(awesomeconf->display, awesomeconf->phys_screen), 0, 0);
++    XSetFont(awesomeconf->display, drawcontext->gc,
++             drawcontext->font->fid);
      XSetLineAttributes(awesomeconf->display, drawcontext->gc, 1, LineSolid, CapButt, JoinMiter);
-@@ -289,15 +300,15 @@ main(int argc, char *argv[])
+ }
+ 
+@@ -289,15 +426,15 @@ main(int argc, char *argv[])
              printf("awesome-" VERSION " © 2007 Julien Danjou\n");
              return EXIT_SUCCESS;
          }
@@ -59,7 +205,7 @@ index c728830..4b59aa0 100644
  
      /* Tag won't be printed otherwised */
 diff --git a/config.c b/config.c
-index d06234d..725ea83 100644
+index d06234d..cda7b10 100644
 --- a/config.c
 +++ b/config.c
 @@ -41,6 +41,40 @@
@@ -109,7 +255,7 @@ index d06234d..725ea83 100644
  
 -    a_strcpy(awesomeconf->statustext, sizeof(awesomeconf->statustext), "awesome-" VERSION);
 +    a_strcpy(awesomeconf->statustext, sizeof(awesomeconf->statustext),
-+             "EX-WORD 2000");
++             "HOLO / EX-WORD");
  
      /* store display */
      awesomeconf->display = disp;
@@ -240,7 +386,7 @@ index d06234d..725ea83 100644
      p_delete(&confpath);
  }
 diff --git a/config.h b/config.h
-index e8409f1..6dc063e 100644
+index e8409f1..5aed672 100644
 --- a/config.h
 +++ b/config.h
 @@ -25,7 +25,6 @@
@@ -266,12 +412,14 @@ index e8409f1..6dc063e 100644
  } DC;
  
  typedef struct
-@@ -147,6 +148,8 @@ struct awesome_config
+@@ -147,6 +148,10 @@ struct awesome_config
      int opacity_unfocused;
      /** Respect resize hints */
      Bool resize_hints;
 +    /** Root-window background color */
 +    unsigned long desktop_bg;
++    /** Server-side root wallpaper pixmap, or None for the solid fallback */
++    Pixmap desktop_pixmap;
      /** Text displayed in bar */
      char statustext[256];
      /** Current layout */
@@ -301,20 +449,22 @@ index d7bc302..2e33b01 100644
  # compiler and linker
  CC = cc
 diff --git a/draw.c b/draw.c
-index 2da80b8..5585fec 100644
+index 2da80b8..d2f716b 100644
 --- a/draw.c
 +++ b/draw.c
-@@ -30,9 +30,6 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
+@@ -30,9 +30,8 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
      static char buf[256];
      size_t len, olen;
      XRectangle r = { drawcontext->x, drawcontext->y, drawcontext->w, drawcontext->h };
 -    XRenderColor xrcolor;
 -    XftColor xftcolor;
 -    XftDraw *xftdrawable;
++
++    (void) screen;
  
      XSetForeground(disp, drawcontext->gc, col[ColBG]);
      XFillRectangles(disp, drawable, drawcontext->gc, &r, 1);
-@@ -44,7 +41,7 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
+@@ -44,7 +43,7 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
          len = sizeof(buf) - 1;
      memcpy(buf, text, len);
      buf[len] = 0;
@@ -323,7 +473,7 @@ index 2da80b8..5585fec 100644
      y = drawcontext->y + (drawcontext->h / 2) - (h / 2) + drawcontext->font->ascent;
      x = drawcontext->x + (h / 2);
      while(len && (w = textwidth(disp, drawcontext->font, buf, len)) > drawcontext->w - h)
-@@ -60,13 +57,9 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
+@@ -60,13 +59,8 @@ drawtext(Display *disp, int screen, DC *drawcontext, Drawable drawable, const ch
          if(len > 3)
              buf[len - 3] = '.';
      }
@@ -335,12 +485,11 @@ index 2da80b8..5585fec 100644
 -    XftDrawStringUtf8(xftdrawable, &xftcolor, drawcontext->font, x, y, (FcChar8 *) buf, len);
 -    XftColorFree(disp, DefaultVisual(disp, screen), DefaultColormap(disp, screen), &xftcolor);
 +    XSetForeground(disp, drawcontext->gc, textcolor.pixel);
-+    XSetFont(disp, drawcontext->gc, drawcontext->font->fid);
 +    XDrawString(disp, drawable, drawcontext->gc, x, y, buf, (int) len);
  }
  
  void
-@@ -91,11 +84,39 @@ drawsquare(Display *disp, DC drawcontext, Drawable drawable, Bool filled, unsign
+@@ -91,11 +85,39 @@ drawsquare(Display *disp, DC drawcontext, Drawable drawable, Bool filled, unsign
          XDrawRectangles(disp, drawable, drawcontext.gc, &r, 1);
  }
  
@@ -446,10 +595,10 @@ index 7b8a357..11045ef 100644
              else if(ev->button == Button5)
                  uicb_focusprev(e->xany.display, &dc[screen], &awesomeconf[screen], NULL);
 diff --git a/statusbar.c b/statusbar.c
-index 537ea9a..c7a422f 100644
+index 537ea9a..47037fe 100644
 --- a/statusbar.c
 +++ b/statusbar.c
-@@ -30,51 +30,77 @@
+@@ -30,56 +30,84 @@
  
  extern Client *clients, *sel;   /* global client list */
  
@@ -467,7 +616,7 @@ index 537ea9a..c7a422f 100644
 +    const char *command;
 +} Launcher;
 +
-+static char launcher_start_label[] = "Start";
++static char launcher_start_label[] = "[]";
 +
 +/* Add future applications here; drawing and hit-testing share this table. */
 +static const Launcher launchers[] =
@@ -496,9 +645,7 @@ index 537ea9a..c7a422f 100644
 +        drawcontext->w = launcher_width(disp, drawcontext, &launchers[i]);
 +        drawtext(disp, awesomeconf->phys_screen, drawcontext,
 +                 awesomeconf->statusbar.drawable, launchers[i].label,
-+                 drawcontext->norm, drawcontext->text_normal);
-+        drawbevel(disp, *drawcontext, awesomeconf->statusbar.drawable,
-+                  False);
++                 drawcontext->sel, drawcontext->text_selected);
 +        drawcontext->x += drawcontext->w;
 +    }
 +}
@@ -529,8 +676,10 @@ index 537ea9a..c7a422f 100644
  drawstatusbar(Display *disp, DC *drawcontext, awesome_config * awesomeconf)
  {
 -    int x, i;
+-    ScreenInfo *si = get_screen_info(disp, awesomeconf->screen, NULL);
 +    int x;
-     ScreenInfo *si = get_screen_info(disp, awesomeconf->screen, NULL);
++    int width = awesomeconf->statusbar.width;
++    Bool notification = awesomeconf->statustext[0] == '!';
  
      drawcontext->x = drawcontext->y = 0;
 -    for(i = 0; i < awesomeconf->ntags; i++)
@@ -554,44 +703,59 @@ index 537ea9a..c7a422f 100644
 -    drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, awesomeconf->current_layout->symbol, drawcontext->norm, drawcontext->text_normal);
 -    x = drawcontext->x + drawcontext->w;
 -    drawcontext->w = textwidth(disp, drawcontext->font, awesomeconf->statustext, a_strlen(awesomeconf->statustext)) + drawcontext->font->height;
+-    drawcontext->x = si[awesomeconf->screen].width - drawcontext->w;
 +    drawlaunchers(disp, drawcontext, awesomeconf);
 +    x = drawcontext->x;
 +    drawcontext->w = textwidth(disp, drawcontext->font, awesomeconf->statustext, a_strlen(awesomeconf->statustext)) + drawcontext->font->ascent + drawcontext->font->descent;
-     drawcontext->x = si[awesomeconf->screen].width - drawcontext->w;
++    drawcontext->x = width - drawcontext->w;
      if(drawcontext->x < x)
      {
-@@ -82,6 +108,7 @@ drawstatusbar(Display *disp, DC *drawcontext, awesome_config * awesomeconf)
-         drawcontext->w = si[awesomeconf->screen].width - x;
-     }
-     drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, awesomeconf->statustext, drawcontext->norm, drawcontext->text_normal);
-+    drawbevel(disp, *drawcontext, awesomeconf->statusbar.drawable, True);
-     if((drawcontext->w = drawcontext->x - x) > awesomeconf->statusbar.height)
-     {
          drawcontext->x = x;
-@@ -90,17 +117,16 @@ drawstatusbar(Display *disp, DC *drawcontext, awesome_config * awesomeconf)
-             drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, sel->name, drawcontext->sel, drawcontext->text_selected);
+-        drawcontext->w = si[awesomeconf->screen].width - x;
++        drawcontext->w = width - x;
+     }
+-    drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, awesomeconf->statustext, drawcontext->norm, drawcontext->text_normal);
++    drawtext(disp, awesomeconf->phys_screen, drawcontext,
++             awesomeconf->statusbar.drawable, awesomeconf->statustext,
++             notification ? drawcontext->sel : drawcontext->norm,
++             notification ? drawcontext->text_selected : drawcontext->text_normal);
+     if((drawcontext->w = drawcontext->x - x) > awesomeconf->statusbar.height)
+@@ -91,17 +115,18 @@ drawstatusbar(Display *disp, DC *drawcontext, awesome_config * awesomeconf)
              if(sel->isfloating)
                  drawsquare(disp, *drawcontext, awesomeconf->statusbar.drawable, sel->ismax, drawcontext->sel[ColFG]);
--        }
+         }
 -        else if(IS_ARRANGE(layout_tile) || IS_ARRANGE(layout_tileleft))
 -        {
 -            char buf[256];
 -            snprintf(buf, sizeof(buf), "nmaster: %d ncols: %d mwfact: %.2lf", awesomeconf->nmaster, awesomeconf->ncols, awesomeconf->mwfact);
 -            drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, buf, drawcontext->norm, drawcontext->text_normal);
-+            drawbevel(disp, *drawcontext,
-+                      awesomeconf->statusbar.drawable, True);
-         }
+-        }
          else
 -            drawtext(disp, awesomeconf->phys_screen, drawcontext, awesomeconf->statusbar.drawable, NULL, drawcontext->norm, drawcontext->text_normal);
 +            drawtext(disp, awesomeconf->phys_screen, drawcontext,
 +                     awesomeconf->statusbar.drawable, "Desktop",
 +                     drawcontext->norm, drawcontext->text_normal);
      }
-     XCopyArea(disp, awesomeconf->statusbar.drawable, awesomeconf->statusbar.window, drawcontext->gc, 0, 0, si[awesomeconf->screen].width, awesomeconf->statusbar.height, 0, 0);
-+    XFree(si);
-     XSync(disp, False);
+-    XCopyArea(disp, awesomeconf->statusbar.drawable, awesomeconf->statusbar.window, drawcontext->gc, 0, 0, si[awesomeconf->screen].width, awesomeconf->statusbar.height, 0, 0);
+-    XSync(disp, False);
++    XSetForeground(disp, drawcontext->gc, drawcontext->sel[ColBorder]);
++    XDrawLine(disp, awesomeconf->statusbar.drawable, drawcontext->gc,
++              0, 0, width - 1, 0);
++    XCopyArea(disp, awesomeconf->statusbar.drawable,
++              awesomeconf->statusbar.window, drawcontext->gc, 0, 0,
++              width, awesomeconf->statusbar.height, 0, 0);
++    XFlush(disp);
  }
  
+ void
+@@ -116,6 +141,7 @@ initstatusbar(Display *disp, int screen, DC *drawcontext, Statusbar *statusbar)
+     statusbar->screen = screen;
+ 
+     si = get_screen_info(disp, screen, NULL);
++    statusbar->width = si[screen].width;
+ 
+     wa.event_mask = SubstructureRedirectMask | SubstructureNotifyMask
+         | EnterWindowMask | LeaveWindowMask | StructureNotifyMask;
 @@ -134,6 +160,7 @@ initstatusbar(Display *disp, int screen, DC *drawcontext, Statusbar *statusbar)
                                          si[screen].width,
                                          statusbar->height,

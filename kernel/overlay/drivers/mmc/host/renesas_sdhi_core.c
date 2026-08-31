@@ -111,6 +111,7 @@ static int renesas_sdhi_clk_enable(struct tmio_mmc_host *host)
 	if (!mmc->f_max) {
 		dev_err(&host->pdev->dev,
 			"refusing probe: input clock rate is zero\n");
+		clk_disable_unprepare(priv->clk_cd);
 		return -EINVAL;
 	}
 

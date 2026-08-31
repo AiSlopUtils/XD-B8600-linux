@@ -14,4 +14,9 @@ tree=$1
 }
 
 cp -a "$repo/kernel/overlay/." "$tree/"
+for kernel_patch in "$repo"/kernel/patches/*.patch; do
+	[ -f "$kernel_patch" ] || continue
+	patch -d "$tree" -p1 --dry-run < "$kernel_patch" >/dev/null
+	patch -d "$tree" -p1 < "$kernel_patch"
+done
 echo "Applied XD-B8600 Linux 6.1 overlay to $tree"

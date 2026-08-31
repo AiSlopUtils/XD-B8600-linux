@@ -1,0 +1,5 @@
+// TinyX uses only the standard US keyboard symbols on the EX-word.  Keep the
+// evdev include resolvable without carrying the desktop multimedia-key table.
+partial alphanumeric_keys
+xkb_symbols "evdev" {
+};

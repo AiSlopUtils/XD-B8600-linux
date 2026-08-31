@@ -1,0 +1,4 @@
+#!/bin/sh
+TERMINFO=${TERMINFO:-/opt/x11/usr/share/terminfo}
+export TERMINFO
+exec /opt/x11/usr/bin/nano.real "$@"

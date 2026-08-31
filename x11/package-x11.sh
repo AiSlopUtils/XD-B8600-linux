@@ -16,12 +16,23 @@ strip=$host/bin/sh4aeb-buildroot-linux-musl-strip
 config_root=${X11_CONFIG_ROOT:-/work/x11-root}
 repo=${X11_SOURCE_ROOT:-$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)}
 apps_root=$repo/x11/apps
+assets_root=$repo/x11/assets
 awesome_source=${AWESOME_SOURCE:-$repo/build/awesome-v1.3-src}
+w3m_source=${W3M_SOURCE:-$repo/build/w3m-src}
+w3m_build=${W3M_BUILD:-$(dirname "$stage")/w3m-build}
+w3m_jobs=${W3M_JOBS:-2}
 sysroot=$host/sh4aeb-buildroot-linux-musl/sysroot
+wallpaper=$assets_root/custom-wallpaper-528x320.rgb565
+wallpaper_sha256=007623bb0f215d2e6ce893a81a86e0c76ff13e0214256f1c48614e035f6a5f0e
 
 [[ -d $target && -x $readelf && -x $cc && -x $strip ]]
-[[ -d $apps_root && -f $awesome_source/Makefile ]] || {
-	echo "package-x11: helper or Awesome source is not prepared" >&2
+[[ -d $apps_root && -f $awesome_source/Makefile && -x $w3m_source/configure ]] || {
+	echo "package-x11: helper, Awesome, or w3m source is not prepared" >&2
+	exit 1
+}
+[[ -f $wallpaper && $(stat -c %s "$wallpaper") -eq 337920 &&
+	$(sha256sum "$wallpaper" | awk '{print $1}') == "$wallpaper_sha256" ]] || {
+	echo "package-x11: custom wallpaper is missing or corrupt" >&2
 	exit 1
 }
 [[ ! -e $stage ]] || {
@@ -66,6 +77,13 @@ build_exword_programs()
 		-o "$target/usr/bin/exdesk" "$apps_root/exdesk.c" \
 		$("${pkg_env[@]}" "$pkg_config" --cflags --libs x11)
 	"$cc" $common_cflags -Wl,--gc-sections,-z,noexecstack \
+		-o "$target/usr/bin/snake" "$apps_root/snake.c" \
+		$("${pkg_env[@]}" "$pkg_config" --cflags --libs x11)
+	"$cc" $common_cflags -Wl,--gc-sections,-z,noexecstack \
+		-o "$target/usr/bin/holostatus" "$apps_root/holostatus.c"
+	"$cc" $common_cflags -Wl,--gc-sections,-z,noexecstack \
+		-o "$target/usr/bin/file" "$apps_root/file-lite.c"
+	"$cc" $common_cflags -Wl,--gc-sections,-z,noexecstack \
 		-o "$target/usr/bin/subpad-mouse" "$apps_root/subpad-mouse.c" \
 		$("${pkg_env[@]}" "$pkg_config" --cflags --libs xcb xcb-xtest)
 	"$cc" $common_cflags -static -Wl,--gc-sections,-z,noexecstack \
@@ -77,6 +95,9 @@ build_exword_programs()
 
 	"$strip" "$target/usr/bin/awesome" \
 		"$target/usr/bin/exdesk" \
+		"$target/usr/bin/snake" \
+		"$target/usr/bin/holostatus" \
+		"$target/usr/bin/file" \
 		"$target/usr/bin/subpad-mouse" \
 		"$target/usr/bin/Xfbdev.gate" \
 		"$target/usr/bin/sublcd-test" \
@@ -84,6 +105,8 @@ build_exword_programs()
 }
 
 build_exword_programs
+"$repo/x11/build-w3m.sh" \
+	"$w3m_source" "$w3m_build" "$target" "$host" "$w3m_jobs"
 
 declare -a queue=()
 declare -A seen=()
@@ -145,8 +168,19 @@ copy_link_chain()
 add_rel /usr/bin/Xfbdev
 add_rel /usr/bin/xkbcomp
 add_rel /usr/bin/xterm
+add_rel /usr/bin/xcalc
+add_rel /usr/bin/xedit
+add_rel /usr/bin/xmessage
+add_rel /usr/bin/xkill
+add_rel /usr/bin/nano
+add_rel /usr/bin/less
+add_rel /usr/bin/bc
+add_rel /usr/bin/file
+add_rel /usr/bin/w3m
 add_rel /usr/bin/awesome
 add_rel /usr/bin/exdesk
+add_rel /usr/bin/snake
+add_rel /usr/bin/holostatus
 add_rel /usr/bin/subpad-mouse
 add_rel /usr/bin/Xfbdev.gate
 add_rel /usr/bin/sublcd-test
@@ -203,6 +237,11 @@ done
 
 ln -s Xfbdev "$stage/usr/bin/X"
 mkdir -p "$stage/usr/share/X11/xkb" "$stage/etc/X11"
+mkdir -p "$stage/usr/share/awesome"
+install -m 0644 "$wallpaper" \
+	"$stage/usr/share/awesome/holo-wallpaper-528x320.rgb565"
+install -D -m 0644 "$repo/x11/w3m/COPYING" \
+	"$stage/usr/share/licenses/w3m/COPYING"
 
 # Xfbdev is fixed to evdev/pc105/us on this appliance.  This is the complete
 # recursive include closure for that keymap; compiling and decompiling it with
@@ -228,30 +267,58 @@ for rel in "${xkb_files[@]}"; do
 	mkdir -p "$stage/usr/share/X11/xkb/$(dirname "$rel")"
 	cp -a "$src" "$stage/usr/share/X11/xkb/$rel"
 done
+# The full inet table is almost entirely laptop multimedia keys and costs
+# precious low-memory SquashFS space.  The EX-word and a standard USB HID
+# keyboard use the normal pc/us symbols; retain an empty evdev include so the
+# stock rules file still compiles cleanly.
+install -m 0644 "$config_root/usr/share/X11/xkb/symbols/inet" \
+	"$stage/usr/share/X11/xkb/symbols/inet"
 
 # Retain Xlib's small C-locale/error/color databases at their compiled path.
 cp -a "$target/usr/share/X11/locale" "$stage/usr/share/X11/"
-cp -a "$target/usr/share/X11/XErrorDB" "$stage/usr/share/X11/"
+# XErrorDB only expands diagnostic error numbers into prose.  Omitting it
+# preserves normal X operation and saves enough space for 128 KiB blocks.
 cp -a "$target/usr/share/X11/Xcms.txt" "$stage/usr/share/X11/"
 
-# Xterm links against ncurses to select a valid TERM value.  Keep only the
-# single entry used by this appliance; startx points TERMINFO at this relocated
-# directory so no copy or symlink outside /opt/x11 is needed.
-xterm_terminfo=$target/usr/share/terminfo/x/xterm
-if [[ ! -f $xterm_terminfo ]]; then
-	# ncurses uses hexadecimal first-character directories when its host tic
-	# is built on a case-insensitive filesystem (x is ASCII 0x78).
-	xterm_terminfo=$target/usr/share/terminfo/78/xterm
+# Athena applications keep their layouts in app-default files.  rcS exposes
+# the relocated X11 data directory at /usr/share/X11, so these retain their
+# normal compiled path without per-application environment hacks.
+mkdir -p "$stage/usr/share/X11/app-defaults"
+for resource in XCalc Xedit Xmessage Xmessage-color; do
+	if [[ -f $target/usr/share/X11/app-defaults/$resource ]]; then
+		cp -a "$target/usr/share/X11/app-defaults/$resource" \
+			"$stage/usr/share/X11/app-defaults/$resource"
+	fi
+done
+for resource in XCalc Xedit Xmessage; do
+	[[ -f $stage/usr/share/X11/app-defaults/$resource ]] || {
+		echo "package-x11: missing app-default resource: $resource" >&2
+		exit 1
+	}
+done
+if [[ -d $target/usr/share/X11/xedit ]]; then
+	cp -a "$target/usr/share/X11/xedit" "$stage/usr/share/X11/"
 fi
-[[ -f $xterm_terminfo ]] || {
-	echo "package-x11: missing xterm terminfo entry (x/xterm or 78/xterm)" >&2
-	exit 1
-}
-mkdir -p "$stage/usr/share/terminfo/x"
-cp -a "$xterm_terminfo" "$stage/usr/share/terminfo/x/xterm"
+
+# Xterm, nano, and less use ncurses.  Keep the entries needed both under X and
+# on the Linux framebuffer console; the tiny wrappers below point TERMINFO at
+# this relocated directory.
+for term in xterm linux; do
+	first=${term:0:1}
+	hex=$(printf '%02x' "'$first")
+	terminfo=$target/usr/share/terminfo/$first/$term
+	[[ -f $terminfo ]] || terminfo=$target/usr/share/terminfo/$hex/$term
+	[[ -f $terminfo ]] || {
+		echo "package-x11: missing $term terminfo entry" >&2
+		exit 1
+	}
+	mkdir -p "$stage/usr/share/terminfo/$first"
+	cp -a "$terminfo" "$stage/usr/share/terminfo/$first/$term"
+done
 
 expected_interp=
-for binary in Xfbdev xkbcomp xterm awesome exdesk subpad-mouse; do
+for binary in Xfbdev xkbcomp xterm xcalc xedit xmessage xkill \
+	nano less bc file w3m awesome exdesk snake holostatus subpad-mouse; do
 	file=$stage/usr/bin/$binary
 	header=$("$readelf" -h "$file")
 	grep -q 'Class:.*ELF32' <<<"$header"
@@ -300,12 +367,19 @@ done
 # compatible; in this image it resolves to the Awesome supervisor.
 mv "$stage/usr/bin/Xfbdev" "$stage/usr/bin/Xfbdev.real"
 mv "$stage/usr/bin/xterm" "$stage/usr/bin/xterm.real"
+mv "$stage/usr/bin/nano" "$stage/usr/bin/nano.real"
+mv "$stage/usr/bin/less" "$stage/usr/bin/less.real"
+mv "$stage/usr/bin/w3m" "$stage/usr/bin/w3m.real"
 install -m 0755 "$config_root/usr/bin/Xfbdev" "$stage/usr/bin/Xfbdev"
 install -m 0755 "$config_root/usr/bin/subpad-awesome" \
 	"$stage/usr/bin/subpad-awesome"
 install -m 0755 "$config_root/usr/bin/xterm" "$stage/usr/bin/xterm"
+install -m 0755 "$config_root/usr/bin/nano" "$stage/usr/bin/nano"
+install -m 0755 "$config_root/usr/bin/less" "$stage/usr/bin/less"
+install -m 0755 "$config_root/usr/bin/w3m" "$stage/usr/bin/w3m"
 install -m 0755 "$config_root/usr/bin/screenfetch" \
 	"$stage/usr/bin/screenfetch"
+install -m 0755 "$config_root/usr/bin/notify" "$stage/usr/bin/notify"
 install -m 0644 "$config_root/etc/X11/twmrc" "$stage/etc/X11/twmrc"
 
 rm -f "$stage/usr/bin/X" "$stage/usr/bin/twm" \
@@ -318,7 +392,7 @@ ln -s exdesk "$stage/usr/bin/exfile"
 ln -s exdesk "$stage/usr/bin/xclock"
 ln -s exdesk "$stage/usr/bin/xeyes"
 
-for script in Xfbdev subpad-awesome xterm screenfetch; do
+for script in Xfbdev subpad-awesome xterm nano less w3m screenfetch notify; do
 	sh -n "$stage/usr/bin/$script"
 done
 [[ $(readlink "$stage/usr/bin/X") == Xfbdev ]]
@@ -327,7 +401,9 @@ for alias in exmenu exfile xclock xeyes; do
 	[[ $(readlink "$stage/usr/bin/$alias") == exdesk ]]
 done
 
-for binary in Xfbdev.real awesome exdesk subpad-mouse xkbcomp xterm.real; do
+for binary in Xfbdev.real awesome exdesk snake holostatus subpad-mouse xkbcomp \
+	xterm.real xcalc xedit xmessage xkill nano.real less.real bc file; do
+	# w3m is checked separately below only to keep this long list readable.
 	file=$stage/usr/bin/$binary
 	interp=$(
 		"$readelf" -l "$file" |
@@ -336,12 +412,29 @@ for binary in Xfbdev.real awesome exdesk subpad-mouse xkbcomp xterm.real; do
 	[[ $interp == "$expected_interp" && -e $stage$interp ]]
 done
 
+file=$stage/usr/bin/w3m.real
+interp=$(
+	"$readelf" -l "$file" |
+		sed -n 's@.*Requesting program interpreter: \(.*\)]@\1@p'
+)
+[[ $interp == "$expected_interp" && -e $stage$interp ]]
+
 for required in \
 	usr/bin/Xfbdev usr/bin/Xfbdev.gate usr/bin/Xfbdev.real \
 	usr/bin/awesome usr/bin/subpad-awesome usr/bin/subpad-mouse \
 	usr/bin/exdesk usr/bin/exmenu usr/bin/exfile usr/bin/xclock usr/bin/xeyes \
+	usr/bin/snake usr/bin/holostatus usr/bin/notify \
 	usr/bin/xterm usr/bin/xterm.real usr/bin/screenfetch \
-	usr/bin/sublcd-test usr/bin/touchdiag etc/X11/twmrc
+	usr/bin/xcalc usr/bin/xedit usr/bin/xmessage usr/bin/xkill \
+	usr/bin/nano usr/bin/nano.real usr/bin/less usr/bin/less.real \
+	usr/bin/bc usr/bin/file \
+	usr/bin/w3m usr/bin/w3m.real \
+	usr/share/licenses/w3m/COPYING \
+	usr/bin/sublcd-test usr/bin/touchdiag etc/X11/twmrc \
+	usr/share/X11/app-defaults/XCalc usr/share/X11/app-defaults/Xedit \
+	usr/share/X11/app-defaults/Xmessage \
+	usr/share/X11/app-defaults/Xmessage-color usr/share/terminfo/l/linux \
+	usr/share/awesome/holo-wallpaper-528x320.rgb565
 do
 	[[ -e $stage/$required || -L $stage/$required ]] || {
 		echo "package-x11: final image is missing $required" >&2
@@ -354,7 +447,7 @@ printf '  %s\n' "${queue[@]}"
 du -sh "$stage"
 
 mksquashfs "$stage" "$output" \
-	-noappend -all-root -comp xz -b 65536 -Xdict-size 65536 \
+	-noappend -all-root -comp xz -b 131072 -Xdict-size 131072 \
 	-always-use-fragments -no-xattrs -no-exports -no-progress \
 	-mkfs-time 0 -all-time 0
 

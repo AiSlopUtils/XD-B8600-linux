@@ -17,8 +17,8 @@ mount -t tmpfs -o size=1M,nr_inodes=128,mode=1777 tmpfs /tmp 2>/dev/null || \
 	echo "  Warning: bounded /tmp mount failed"
 
 # Internal flash remains read-only from Linux.  Keep the deliberately bounded
-# zram fallback available.  Removable-card probing is held off until the
-# read-only sdhwinfo snapshot validates the inherited clock and pin mux.
+# zram fallback available.  SD/MMC is intentionally disabled: the device's
+# card-slot hardware currently needs repair and Linux must not touch it.
 swap_status="disabled"
 zram_sys=/sys/block/zram0
 if [ -b /dev/zram0 ] && [ -w "$zram_sys/disksize" ]; then
@@ -86,7 +86,7 @@ echo "  Kernel:  Linux 6.1"
 echo "  CPU:     Renesas SH-4A, big-endian"
 echo "  Memory:  16 MiB physical"
 echo "  Swap:    $swap_status"
-echo "  SD:      controller held unbound; run sdhwinfo"
+echo "  SD:      disabled; controller is not registered"
 echo "  X11:     $x11_status"
 echo "  Root:    swap-capable tmpfs initramfs"
 echo "  /tmp:    1 MiB maximum"

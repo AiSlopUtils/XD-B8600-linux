@@ -28,6 +28,7 @@ gid=$(id -g)
 
 "$repo/scripts/prepare-buildroot.sh" "$source_tree"
 "$repo/scripts/prepare-awesome.sh" "$repo/build/awesome-v1.3-src"
+"$repo/scripts/prepare-w3m.sh" "$repo/build/w3m-src"
 
 docker build -t "$image" \
 	-f "$repo/x11/Dockerfile.buildroot-x11" "$repo/x11"
@@ -68,6 +69,7 @@ docker run --rm \
 	rm -f "$out/x11-xterm.sqfs" /work/build/x11-xterm.sqfs
 	X11_CONFIG_ROOT=/work/x11/config X11_SOURCE_ROOT=/work \
 	AWESOME_SOURCE=/work/build/awesome-v1.3-src \
+	W3M_SOURCE=/work/build/w3m-src W3M_JOBS="$1" \
 	/work/x11/package-x11.sh \
 		"$out/target" "$out/host" \
 		"$out/x11-stage" "$out/x11-xterm.sqfs"

@@ -20,6 +20,7 @@ export TERMINFO=$xroot/usr/share/terminfo
 
 keyboard_event=
 pointer_event=
+usb_input_args=
 for event_dir in /sys/class/input/event*; do
 	[ -r "$event_dir/device/name" ] || continue
 	event_name=${event_dir##*/}
@@ -27,6 +28,17 @@ for event_dir in /sys/class/input/event*; do
 	case "$device_name" in
 		"EX-word keypad") keyboard_event=/dev/input/$event_name ;;
 		"EX-word pointer") pointer_event=/dev/input/$event_name ;;
+	esac
+
+	# TinyX has no udev daemon on this 16 MiB system.  Add every USB evdev
+	# node present when X starts.  Relative devices are pointers; the other
+	# USB HID event interfaces are keyboards (including multimedia keys).
+	usb_bus=$(cat "$event_dir/device/id/bustype" 2>/dev/null)
+	[ "$usb_bus" = 0003 ] || continue
+	usb_rel=$(cat "$event_dir/device/capabilities/rel" 2>/dev/null)
+	case "$usb_rel" in
+		""|0|00|00000000) usb_input_args="$usb_input_args -keybd evdev,,device=/dev/input/$event_name,XkbRules=evdev,XkbModel=pc105,XkbLayout=us" ;;
+		*) usb_input_args="$usb_input_args -mouse evdev,,device=/dev/input/$event_name" ;;
 	esac
 done
 if [ -z "$keyboard_event" ] || [ -z "$pointer_event" ]; then
@@ -42,11 +54,17 @@ rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 /tmp/Xfbdev.log
 echo "Starting X.Org Xfbdev on VT2..."
 echo "POWER toggles keypad mouse mode; arrows move; ENTER/ZOOM/BACK click L/M/R."
 echo "The secondary touch LCD provides directional and L/R mouse buttons."
-echo "Use the bottom-left Start menu; switch mouse mode off and press BACK+Q to quit."
+echo "USB HID keyboard/mouse devices present now are enabled too."
+echo "Use the bottom-left MENU button; switch mouse mode off and press BACK+Q to quit."
 
+# usb_input_args contains only kernel-generated event node names and fixed
+# punctuation, so intentional field splitting supplies additional TinyX input
+# option groups here.
+# shellcheck disable=SC2086
 "$xbin/Xfbdev" :0 -fb /dev/fb0 vt2 \
 	-keybd evdev,,device=$keyboard_event,XkbRules=evdev,XkbModel=pc105,XkbLayout=us \
 	-mouse evdev,,device=$pointer_event \
+	$usb_input_args \
 	-softCursor -nolisten tcp -ac -noreset -s 0 -bs > /tmp/Xfbdev.log 2>&1 &
 xpid=$!
 

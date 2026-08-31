@@ -1,0 +1,14 @@
+# Compact magic database for the EX-word's read-only userspace.
+0	string	\177ELF	ELF executable or object
+0	string	\211PNG	PNG image data
+0	beshort	0xffd8	JPEG image data
+0	string	GIF87a	GIF image data
+0	string	GIF89a	GIF image data
+0	string	BM	Windows bitmap image
+0	string	\037\213	gzip compressed data
+0	string	PK\003\004	ZIP archive data
+0	string	hsqs	SquashFS filesystem, little-endian
+0	string	sqsh	SquashFS filesystem, big-endian
+0	string	070701	ASCII cpio archive
+257	string	ustar	POSIX tar archive
+0	string	#!/	POSIX shell script

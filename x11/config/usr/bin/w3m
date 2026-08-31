@@ -1,0 +1,8 @@
+#!/bin/sh
+
+TERMINFO=${TERMINFO:-/opt/x11/usr/share/terminfo}
+W3M_DIR=${W3M_DIR:-/tmp/w3m}
+export TERMINFO W3M_DIR
+mkdir -p "$W3M_DIR" 2>/dev/null || :
+
+exec /opt/x11/usr/bin/w3m.real "$@"

@@ -21,10 +21,17 @@ done
 
 for required in \
 	"$repo/x11/apps/exdesk.c" \
+	"$repo/x11/apps/file-lite.c" \
+	"$repo/x11/apps/holostatus.c" \
+	"$repo/x11/apps/snake.c" \
 	"$repo/x11/apps/subpad-mouse.c" \
 	"$repo/x11/apps/sublcd-test.c" \
 	"$repo/x11/apps/touchdiag.c" \
 	"$repo/x11/apps/x11-start-gate.c" \
+	"$repo/x11/assets/custom-wallpaper-528x320.rgb565" \
+	"$repo/x11/config/usr/share/X11/xkb/symbols/inet" \
+	"$repo/x11/w3m/host-gc/gc.h" \
+	"$repo/x11/w3m/COPYING" \
 	"$repo/x11/awesome/0001-exword-awesome-1.3.patch" \
 	"$repo/x11/buildroot-overlay/package/xterm/0001-linux-use-unix98-pty-session.patch"
 do
@@ -33,6 +40,26 @@ do
 		exit 1
 	}
 done
+
+for kernel_patch in "$repo"/kernel/patches/*.patch; do
+	[ -e "$kernel_patch" ] || continue
+	[ -s "$kernel_patch" ] || {
+		echo "missing kernel patch: ${kernel_patch#"$repo"/}" >&2
+		exit 1
+	}
+	git apply --numstat "$kernel_patch" >/dev/null
+done
+echo "OK  optional kernel patches"
+
+python3 -c '
+import hashlib, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+data = path.read_bytes()
+expected = "007623bb0f215d2e6ce893a81a86e0c76ff13e0214256f1c48614e035f6a5f0e"
+if len(data) != 337920 or hashlib.sha256(data).hexdigest() != expected:
+    raise SystemExit(f"invalid custom wallpaper asset: {path}")
+' "$repo/x11/assets/custom-wallpaper-528x320.rgb565"
+echo "OK  custom wallpaper size and SHA-256"
 
 # Parse the two upstream patches even when their downloaded source trees are
 # absent.  This catches a truncated/corrupt patch in an offline clean clone.

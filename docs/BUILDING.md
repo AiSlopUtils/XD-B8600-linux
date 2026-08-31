@@ -159,10 +159,13 @@ commit `d4f1b99c93c7da10af774500f3c007e77a765c5d`, applies the repository's
 AwesomeWM 1.3 patch, and cross-builds the following small runtime set:
 
 - X.Org Xfbdev, XKB data, and one fixed-font keymap;
-- a patched AwesomeWM 1.3 with one `Desktop` workspace and one bottom-left
-  Start button;
-- `exdesk`, exposed as the Start menu, file manager, clock, and eyes programs;
+- a patched AwesomeWM 1.3 with one `Desktop` workspace, a lightweight visual
+  adaptation of awesome-copycats Holo, and one bottom-left menu button;
+- the Holo reef wallpaper preconverted to native 528x320 big-endian RGB565;
+- `exdesk`, exposed as the Holo menu, file manager, clock, and eyes programs;
+- the native Snake game and low-overhead RAM/swap/SD/clock status producer;
 - patched xterm plus a one-instance wrapper;
+- size-tuned text-only w3m plus its conservative garbage collector;
 - the X startup gate and the XD-B8600 secondary-LCD/touch helpers; and
 - a text-only screenfetch-style system summary.
 
@@ -176,10 +179,27 @@ normal kernel build using:
   build/kernel/arch/sh/boot/zImage build/x11-xterm.sqfs build/LINUX.PAY
 ```
 
+w3m is built from its separately pinned Git checkout with link-time
+optimization. TLS, images, mouse handling, cookies, history, menus, and m17n
+are disabled. A focused libc-only `file` implementation replaces libmagic,
+and optional X error/color databases and multimedia-key symbols are omitted.
+This lets the final SquashFS use 128 KiB XZ blocks while keeping the complete
+runtime closure inside the immutable payload slot without moving the kernel.
+The smaller blocks avoid severe decompressor memory pressure during X startup
+on the 16 MiB machine.
+
 The wrapper deliberately permits only one xterm at a time. On a 16 MiB
 machine, several simultaneous xterms can make the desktop unresponsive or
 invoke the OOM killer. The lock lives under `/tmp`, is cleared at boot, and is
 removed when the terminal exits.
+
+The Holo port intentionally imports no modern awesome-copycats Lua
+configuration, `lain` widgets, Cairo/Pango stack, PNG decoder, or wallpaper
+daemon. AwesomeWM loads the checked raw wallpaper into one root pixmap in
+small strips, with a solid-color fallback when validation or allocation
+fails. The fixed core font, flat bar, cached bar geometry, reduced X round
+trips, single workspace, and single-terminal policy limit both startup cost
+and steady-state memory use.
 
 The secondary pad is not driven by a generic kernel driver. The X startup
 wrapper draws the six-button image through the firmware-initialized secondary
@@ -245,6 +265,9 @@ kernel relocation region begins. Both build scripts reject an overlap.
 - AwesomeWM is pinned to exact commit
   `d4f1b99c93c7da10af774500f3c007e77a765c5d`; the EX-word changes are stored
   as a source-controlled patch and applied only after the revision check.
+- The Holo visual reference and wallpaper are pinned to awesome-copycats
+  commit `affb71fa9ea69460208590f90383b3b0e8bab9f0`. The checked derivative's
+  dimensions, byte order, size, and SHA-256 are verified before packaging.
 - Ubuntu base tags and apt repositories in the Dockerfiles are not frozen by
   snapshot date. Build scripts compensate with target architecture, static
   linkage, closure, size, CRC, and (for the loader) exact-artifact checks.

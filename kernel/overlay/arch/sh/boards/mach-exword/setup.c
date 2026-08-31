@@ -2,16 +2,10 @@
 /* Minimal Casio EX-word DATAPLUS 6 board support. */
 
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/memblock.h>
-#include <linux/slab.h>
-#include <linux/string.h>
-
-#if IS_ENABLED(CONFIG_MMC_SDHI_SYS_DMAC)
-#include <linux/mfd/tmio.h>
-#include <linux/mmc/host.h>
 #include <linux/platform_device.h>
-#include <linux/sh_intc.h>
-#endif
+#include <linux/usb/r8a66597.h>
 
 #if IS_BUILTIN(CONFIG_MTD)
 #include <linux/mtd/mtd.h>
@@ -19,6 +13,7 @@
 #endif
 
 #include <asm/machvec.h>
+#include <linux/sh_intc.h>
 
 #define EXWORD_VRAM_PHYS 0x0c200000UL
 #define EXWORD_VRAM_SIZE 0x00053000UL
@@ -36,70 +31,47 @@
 #define EXWORD_X11_PHYS 0x0c9b0000UL
 #define EXWORD_X11_SIZE 0x00350000UL
 
-#if IS_ENABLED(CONFIG_MMC_SDHI_SYS_DMAC)
 /*
- * The add-in loader enters Linux after the Casio firmware has configured and
- * powered the external SD slot.  Leave that board-specific state untouched
- * and expose only the documented SH7724 SDHI1 controller.  Empty DMA channel
- * cookies deliberately keep the Renesas/TMIO host on its PIO path.
+ * The external USB connector is USB1.  Casio's firmware normally uses this
+ * dual-role controller as a peripheral; Linux owns it after the add-in loader
+ * jumps to the kernel and deliberately brings it up as a host.  Port power is
+ * controlled by the controller's VBOUT bit, avoiding guesses about unrelated
+ * EX-word GPIOs.  Use an OTG host adapter, and preferably a powered hub while
+ * the board's available VBUS current is still being characterized.
  */
-static struct tmio_mmc_data exword_sdhi1_data = {
-	.ocr_mask	= MMC_VDD_32_33 | MMC_VDD_33_34,
-	.capabilities	= MMC_CAP_NEEDS_POLL,
-	.max_blk_count	= 8,
-	.max_segs	= 1,
+static struct r8a66597_platdata exword_usb1_host_data = {
+	.on_chip = 1,
 };
 
-static struct resource exword_sdhi1_resources[] = {
+static struct resource exword_usb1_host_resources[] = {
 	{
-		.name	= "SDHI1",
-		.start	= 0x04cf0000,
-		.end	= 0x04cf00ff,
-		.flags	= IORESOURCE_MEM,
+		.start = 0xa4d90000,
+		.end = 0xa4d90124 - 1,
+		.flags = IORESOURCE_MEM,
 	}, {
-		.start	= evt2irq(0x4e0),
-		.flags	= IORESOURCE_IRQ,
+		.start = evt2irq(0xa40),
+		.end = evt2irq(0xa40),
+		.flags = IORESOURCE_IRQ | IRQF_TRIGGER_LOW,
 	},
 };
 
-static struct platform_device exword_sdhi1_device = {
-	.name		= "sh_mobile_sdhi",
-	.id		= 1,
-	.num_resources	= ARRAY_SIZE(exword_sdhi1_resources),
-	.resource	= exword_sdhi1_resources,
+static struct platform_device exword_usb1_host_device = {
+	.name = "r8a66597_hcd",
+	.id = 1,
 	.dev = {
-		.platform_data = &exword_sdhi1_data,
+		.dma_mask = NULL,
+		.coherent_dma_mask = 0xffffffff,
+		.platform_data = &exword_usb1_host_data,
 	},
+	.num_resources = ARRAY_SIZE(exword_usb1_host_resources),
+	.resource = exword_usb1_host_resources,
 };
 
-static int __init exword_sdhi1_init(void)
+static int __init exword_devices_init(void)
 {
-	int ret;
-
-	/*
-	 * Keep boot independent of the still-unverified firmware storage
-	 * handoff.  The legacy SH clock tree currently reports a zero rate and
-	 * the stock asynchronous SDHI probe can otherwise hold kernel init
-	 * forever.  A heap-backed override is required because sysfs may replace
-	 * and free this string later while we diagnose the inherited pin mux.
-	 */
-	exword_sdhi1_device.driver_override =
-		kstrdup("exword-storage-disabled", GFP_KERNEL);
-	if (!exword_sdhi1_device.driver_override)
-		return -ENOMEM;
-
-	ret = platform_device_register(&exword_sdhi1_device);
-	if (ret) {
-		kfree(exword_sdhi1_device.driver_override);
-		exword_sdhi1_device.driver_override = NULL;
-		return ret;
-	}
-
-	pr_info("exword: SDHI1 registered unbound for boot-safe diagnostics\n");
-	return 0;
+	return platform_device_register(&exword_usb1_host_device);
 }
-arch_initcall(exword_sdhi1_init);
-#endif
+arch_initcall(exword_devices_init);
 
 static void __init exword_setup(char **cmdline_p)
 {

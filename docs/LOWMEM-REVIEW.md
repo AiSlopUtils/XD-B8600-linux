@@ -32,8 +32,8 @@ compressed pages only as swap is used.
 - SLOB allocator and FLATMEM for the single contiguous 16 MiB RAM bank.
 - Compaction retained because SH uses order-1 (8 KiB) kernel stacks;
   proactive background compaction is disabled while direct compaction remains.
-- 8 MiB logical zram swap using LZO-RLE, with a hard 4 MiB physical-memory cap.
-- `vm.swappiness=150`, `vm.page-cluster=0`, allocating-task OOM selection, and
+- 16 MiB logical zram swap using LZO-RLE, with a hard 4 MiB physical-memory cap.
+- `vm.swappiness=80`, `vm.page-cluster=0`, allocating-task OOM selection, and
   `panic_on_oom=0`.
 - Separate demand-allocated `/tmp` tmpfs limited to 1 MiB and 128 inodes.
 - Root dentry/inode hash tables capped at 256 entries each.
@@ -53,11 +53,10 @@ reclaim waits, `sleep`, and `top` to make progress reliably.
 
 ## Swap limit
 
-The approximately 445 MiB Casio storage and microSD slot are not exposed as a
-Linux block device by this kernel. A swapfile on `/` or `/tmp` would therefore
-be a file in RAM-backed tmpfs and would reduce, not increase, available RAM.
-Zram is the safe current swap path. A large persistent swap area requires a
-separately validated storage driver.
+The internal Casio storage remains unmodified. SD/MMC support is disabled, so
+zram is the only swap path. A persistent swap area must wait until the slot
+hardware and inherited controller clock are independently repaired and
+validated.
 
 ## First-device validation
 

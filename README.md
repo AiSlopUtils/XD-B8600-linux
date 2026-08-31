@@ -8,9 +8,9 @@ Renesas SH7724/SH-4A, big-endian, 16 MiB RAM, and a 528x320 RGB565 main LCD.
 > an XD-B8600. Do not assume that addresses, clocks, displays, or storage are
 > compatible with another EX-word model. The userspace secondary-display and
 > touch-pad helpers access XD-B8600 MMIO directly and must not be run anywhere
-> else. The current recovery payload keeps removable storage deliberately
-> unbound. Boot with the SD card removed and do not manually bind the SDHI
-> driver or run `sdswap prepare erase`.
+> else. SD/MMC is currently disabled because the tested device's card slot
+> needs hardware repair. The kernel does not register or probe an SDHI
+> controller.
 
 ## Current status (2026-08-28)
 
@@ -28,12 +28,16 @@ Integrated in the working v9 source build:
 
 - `xterm`, `screenfetch`, BusyBox `fdisk`, `blkid`, `blockdev`, `partprobe`,
   and a small `lsblk` implementation.
-- One low-memory desktop, a Windows 2000-style bottom bar with a single Start
-  button, and the `exdesk` Start menu/file-manager/clock/eyes suite.
+- One low-memory desktop visually adapted from the awesome-copycats Holo
+  theme, with its reef wallpaper, a single bottom-left menu button, and the
+  `exdesk` menu/file-manager/clock/eyes suite.
+- A native Holo-styled Snake game plus a live RAM, swap, SD, and clock status
+  display with lightweight transient notifications.
 - A one-instance `xterm` wrapper that prevents repeated launches from
   exhausting the 16 MiB system.
-- A guarded SD swap helper. It performs no write unless the exact command
-  `sdswap prepare erase` is used.
+- XCalc, Xedit, Xmessage, Xkill, nano, less, bc, file, and a text-only w3m.
+- SD/MMC is compile-time disabled and no automatic card setup runs during
+  boot. Zram remains the only active swap path.
 - Read-only `sdhwinfo` diagnostics.
 
 The v9 payload was uploaded and read back byte-for-byte over USB. Its display,
@@ -67,23 +71,18 @@ Homebrew or Debian dependencies. See
 [docs/BUILDING.md](docs/BUILDING.md) for setup and
 [docs/INSTALLING.md](docs/INSTALLING.md) for safe device installation.
 
-## Why SD support is disabled
+## SD support is disabled
 
-Linux currently reconstructs the inherited SH7724 clock tree as 0 Hz. Earlier
-SDHI code consequently entered an infinite clock-divider loop during boot.
-The current kernel registers SDHI1 with a nonmatching `driver_override`, so it
-cannot probe automatically, and also rejects a zero-rate SDHI clock.
-
-Run `sdhwinfo` only after reaching the shell. It reads the inherited PFC and
-clock-generator state without touching either storage controller. Clock,
-PTW pin-mux, card power, and card-detect behavior must be validated before
-enabling SDHI or MMCIF. See [docs/SDHI-STATUS.md](docs/SDHI-STATUS.md).
+An experimental SDHI probe reported a zero-rate input clock and was removed
+after a boot regression. The current defconfig has `CONFIG_MMC` disabled,
+board setup registers no SDHI platform device, and init performs no automatic
+card operation. See [docs/SDHI-STATUS.md](docs/SDHI-STATUS.md).
 
 ## Booting the supplied payload
 
 The loader searches for `linux.pay`/`LINUX.PAY` in `CASIOTXT` and at the root
-of internal storage, then on the SD card. The recommended route is internal
-storage with the SD card removed.
+of internal storage, then on the SD card. Use internal storage for this build;
+Linux does not expose the card slot.
 
 Build the included patched `tools/libexword` command-line client with
 `make usb-tool`, create a separate readback directory, and start the client:
@@ -130,7 +129,7 @@ Console key map:
 
 In pointer mode, arrows move the cursor and Enter/Zoom/Back click the
 left/middle/right mouse buttons. Type `startx` to start Xfbdev and AwesomeWM.
-The bottom-left Start button opens every installed GUI program. The secondary
+The bottom-left menu button opens every installed GUI program. The secondary
 pad is drawn as six regions: left/up/right on its top row and
 left-click/down/right-click on its bottom row. Turn keyboard pointer mode off
 and press Back+Q to leave X.
@@ -138,15 +137,16 @@ and press Back+Q to leave X.
 Only one xterm can be open at a time. This is intentional: multiple terminals
 can exhaust the device's 16 MiB of RAM. Close the current terminal before
 starting Command Prompt, Task Manager, System Information, or Disk
-Information from the Start menu.
+Information from the desktop menu.
 
 ## Repository layout
 
 - `kernel/overlay/` — the complete 16-file Linux 6.1 EX-word port overlay.
 - `kernel/exword_defconfig` — exact configuration used for the latest kernel.
 - `rootfs/` — exact BusyBox configuration and custom initramfs overlay.
-- `x11/` — Buildroot and AwesomeWM pins, Xfbdev/xterm patches, v9 desktop
-  utilities and wrappers, one-desktop configuration, and SquashFS packager.
+- `x11/` — Buildroot and AwesomeWM pins, Xfbdev/xterm patches, the adapted
+  Holo theme asset, v9 desktop utilities and wrappers, one-desktop
+  configuration, and SquashFS packager.
 - `loader/` — source for the LNX03 Casio add-in payload loader.
 - `payload/` — test payloads and the EXWPAY1 packer.
 - `tools/libexword/` — pinned upstream transfer client with the local fixes.
@@ -163,9 +163,11 @@ versions, hashes, and upstream locations are recorded in
 
 ## Known limitations
 
-- SD, persistent storage, swap on SD, networking, and audio are not operational.
+- SD/FAT and persistent SD swap are disabled.
+- Networking and audio are not operational.
 - The SH clock model and timer calibration remain provisional.
 - Only 16 MiB of physical RAM is available; X applications can trigger OOM.
+- w3m supports local HTML and plain HTTP only; TLS and images are omitted.
 - The single-instance xterm policy is a memory-safety limit, not a desktop
   configuration option.
 - `top` uses manual Space/Enter refresh because timed refresh is unreliable.
@@ -194,3 +196,6 @@ relicense incorporated third-party work. Linux, BusyBox, libexword, X11
 components, and other imported code retain their upstream licenses; copyright
 and SPDX notices in individual files remain authoritative. See
 [THIRD_PARTY.md](THIRD_PARTY.md) before redistributing combined binaries.
+The adapted awesome-copycats Holo visuals and wallpaper derivative are
+separately distributed under CC BY-SA 4.0 with attribution recorded there and
+in [x11/assets/README.md](x11/assets/README.md).

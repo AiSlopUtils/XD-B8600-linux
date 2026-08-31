@@ -5,9 +5,9 @@ Casio add-in and transfer of `LINUX.PAY`. They apply only to the Japanese
 XD-B8600/DATAPLUS 6 that this port was developed on.
 
 > [!CAUTION]
-> Remove the SD card before booting Linux. SDHI is intentionally disabled
-> because the inherited clock tree is not understood yet. Do not bind the
-> SDHI driver manually. Do not use libexword's `format` command. The v9
+> SD/MMC is disabled because the tested device's card slot needs hardware
+> repair. Do not bind a storage driver manually or use libexword's `format`
+> command. The v9
 > secondary-display/touch helpers contain raw addresses measured only on the
 > XD-B8600; never boot this payload or run those helpers on another model.
 
@@ -114,11 +114,12 @@ There are two supported paths:
     JOBS=4 make all
     ```
 
-The v9 source path includes one AwesomeWM desktop, the Start menu and
-`exdesk` utilities, the one-instance xterm wrapper, text-only screenfetch,
-and the userspace secondary-LCD/touch mouse. Earlier hash-verified milestones
-remain under `artifacts/milestones/` for regression testing. Keep the SD card
-removed for every payload documented here.
+The v9 source path includes one AwesomeWM desktop visually adapted from the
+awesome-copycats Holo theme, its preconverted reef wallpaper, the `exdesk`
+menu and utilities, Snake, the live Holo status/notification bar, the
+one-instance xterm wrapper, text-only screenfetch, and userspace secondary-LCD
+touch mouse. Earlier hash-verified milestones remain
+under `artifacts/milestones/` for regression testing.
 
 ## 5. Transfer and read back the payload
 
@@ -186,7 +187,7 @@ Do not boot if `cmp` prints a difference or returns a failure status.
 ## 6. Boot
 
 1. Safely leave USB mode and disconnect the cable.
-2. Confirm that the SD slot is empty.
+2. Leave the SD slot unused; this kernel does not register a controller.
 3. Launch the LNX03 add-in from the EX-word menu.
 4. Release all keys, then press Enter at the startup-check screen to inspect
    `LINUX.PAY`.
@@ -199,14 +200,14 @@ Do not boot if `cmp` prints a difference or returns a failure status.
 At the BusyBox prompt, run `startx`. The v9 image starts Xfbdev, draws the
 six-button secondary pad, starts its supervised touch-to-pointer helper, and
 then launches AwesomeWM. The first X startup is slow on this 16 MiB system;
-wait for the desktop and Start bar instead of repeatedly pressing keys.
+wait for the wallpaper and bottom bar instead of repeatedly pressing keys.
 
 The loader and Linux payload run from RAM and do not replace Casio firmware
 or write NOR flash.
 
 ## 7. Using the v9 desktop
 
-The desktop deliberately has one workspace. Click the Start button in the
+The desktop deliberately has one workspace. Click the menu button in the
 bottom-left corner to open:
 
 - File Manager;
@@ -214,6 +215,7 @@ bottom-left corner to open:
 - Task Manager;
 - System Information;
 - Disk Information;
+- Snake;
 - Clock; and
 - Eyes.
 
@@ -227,6 +229,9 @@ Only one xterm can run at once. If a terminal-backed Start item appears to do
 nothing, close the current xterm first. This limit prevents repeated launches
 from exhausting RAM. `/tmp/xterm.log` records the most recent terminal exit;
 `/tmp/subpad-mouse.log` records secondary-pad startup diagnostics.
+
+SD-backed filesystems and swap are unavailable in this build. Zram is the
+only swap path.
 
 If the secondary LCD is not drawn or touch does not move the pointer, leave X
 with Back+Q and inspect the logs from the text console. Do not run the raw

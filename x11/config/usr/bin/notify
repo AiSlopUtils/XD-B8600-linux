@@ -1,0 +1,11 @@
+#!/bin/sh
+
+[ "$#" -gt 0 ] || {
+	echo "usage: notify MESSAGE..." >&2
+	exit 2
+}
+
+notice=/tmp/holo-notify
+temporary=$notice.$$
+printf '%s\n' "$*" > "$temporary" || exit 1
+mv "$temporary" "$notice"

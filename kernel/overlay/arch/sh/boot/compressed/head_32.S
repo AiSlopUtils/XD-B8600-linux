@@ -38,6 +38,38 @@ startup:
 	mov.l	exword_mstp0_addr, r1
 	mov.l	@r1, r0
 	mov.l	r0, @r2
+
+	/*
+	 * The Casio firmware keeps the resistive-panel calibration in low RAM.
+	 * The decompressed kernel will replace that RAM, so preserve both known
+	 * calibration banks and the hardware-variant selector alongside KEYSC.
+	 * Keeping the copy here also means the Linux driver never has to guess at
+	 * the user's factory touch calibration.
+	 */
+	add	#4, r2
+	mov.l	exword_touch_snapshot_magic, r0
+	mov.l	r0, @r2
+	add	#4, r2
+	mov.l	exword_touch_variant_addr, r1
+	mov.l	@r1, r0
+	mov.l	r0, @r2
+	add	#4, r2
+	mov.l	exword_touch_cal1_addr, r1
+	mov	#4, r3
+.Lexword_snapshot_cal1:
+	mov.l	@r1+, r0
+	mov.l	r0, @r2
+	add	#4, r2
+	dt	r3
+	bf	.Lexword_snapshot_cal1
+	mov.l	exword_touch_cal2_addr, r1
+	mov	#4, r3
+.Lexword_snapshot_cal2:
+	mov.l	@r1+, r0
+	mov.l	r0, @r2
+	add	#4, r2
+	dt	r3
+	bf	.Lexword_snapshot_cal2
 #endif
 
 	/* Move myself to proper location if necessary */
@@ -144,6 +176,14 @@ exword_keysc_addr:
 	.long	0xa44b0000
 exword_mstp0_addr:
 	.long	0xa4150030
+exword_touch_snapshot_magic:
+	.long	0x45585453	/* "EXTS" */
+exword_touch_variant_addr:
+	.long	0x8c02d2d0
+exword_touch_cal1_addr:
+	.long	0x8c000044
+exword_touch_cal2_addr:
+	.long	0x8c000054
 #endif
 kexec_magic:
 	.long	0x400000F0	/* magic used by kexec to parse zImage format */

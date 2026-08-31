@@ -11,7 +11,10 @@ exact baselines used by the port.
 | musl (Buildroot X11 toolchain) | 1.1.22 | `8b0941a48d2f980fd7036cfbd24aa1d414f03d9a0652ecbd5ec5c7ff1bee29e3` |
 | X.Org server | 1.19.7 | `7112f7128a4f5b06ceb8bba1bdc5e5c9e0fae682a42d35218bc12ba693f4c80c` |
 | xterm | 327 | `66fb2f6c35b342148f549c276b12a3aa3fb408e27ab6360ddec513e14376150b` |
+| w3m | Git revision | `ee66aabc3987000c2851bce6ade4dcbb0b037d81` |
+| Boehm-Demers-Weiser GC | 8.0.0 | Buildroot 2019.02.11 package and recorded hash |
 | AwesomeWM | 1.3 development head | `d4f1b99c93c7da10af774500f3c007e77a765c5d` plus the local patch under `x11/awesome` |
+| awesome-copycats Holo visual reference and wallpaper | pinned Git revision | `affb71fa9ea69460208590f90383b3b0e8bab9f0`; device derivative details under `x11/assets` |
 | Buildroot | 2019.02.11 | `5a6d31c87e1573bc83986471c194b944d7a365b7` |
 | libexword | `2.0-dev` | `d186e356d942ea83c89480dc9d2110c1dbe520ef` plus the local changes in `tools/libexword` |
 | devkitSH4 SDK archive | GCC 8.3.0, Linux x86-64 | `1609b719e62224521243fea086ea492759fd9ee4116e1450d8b5e69fccfc7555` |
@@ -25,7 +28,10 @@ Primary upstream locations:
 - musl 1.1.22: <https://musl.libc.org/releases/musl-1.1.22.tar.gz>
 - X.Org: <https://www.x.org/releases/individual/xserver/xorg-server-1.19.7.tar.bz2>
 - xterm: <https://invisible-mirror.net/archives/xterm/xterm-327.tgz>
+- w3m: <https://github.com/tats/w3m>
+- Boehm GC: <https://www.hboehm.info/gc/>
 - AwesomeWM: <https://github.com/awesomeWM/awesome>
+- awesome-copycats: <https://github.com/lcpz/awesome-copycats>
 - Buildroot: <https://gitlab.com/buildroot.org/buildroot>
 - libexword: <https://github.com/brijohn/libexword>
 - devkitSH4 SDK: <https://github.com/MaxSignal/buildscripts/releases/download/Linux/devkitPro.tar.gz>
@@ -40,10 +46,21 @@ that exact commit.
 `scripts/prepare-awesome.sh` clones AwesomeWM only at the revision recorded
 above, verifies the resulting commit, and then applies the source-controlled
 EX-word patch. The patch adapts the historical 1.3 code to the Buildroot
-libraries, removes the Xft dependency, and implements the one-desktop
-Windows 2000-style bar used by v9. The `exdesk`, secondary-pad, startup-gate,
-and wrapper sources are project-original files stored directly under `x11/`;
-they are not downloaded during the build.
+libraries, removes the Xft dependency, and implements the one-desktop Holo
+visual adaptation used by v9. Holo is referenced at awesome-copycats commit
+`affb71fa9ea69460208590f90383b3b0e8bab9f0`; this port reimplements its
+palette and flat presentation for AwesomeWM 1.3 and includes a center-cropped,
+RGB565 derivative of its reef wallpaper. It does not import the modern Lua,
+`lain`, Cairo, or Pango runtime. The original and device-ready wallpaper
+hashes, conversion, attribution, and CC BY-SA 4.0 terms are recorded in
+[`../x11/assets/README.md`](../x11/assets/README.md). The `exdesk`,
+secondary-pad, startup-gate, and wrapper sources are project-original files
+stored directly under `x11/`; they are not downloaded during the build.
+
+`scripts/prepare-w3m.sh` fetches only the recorded w3m revision and rejects a
+different checkout. The cross-build is text-only and uses the Boehm GC from
+the pinned Buildroot release; no w3m source or generated build tree is
+committed.
 
 The Docker recipes currently use Ubuntu 22.04 tags. Those tags and apt
 repositories are not content-addressed inputs, so target source builds are
